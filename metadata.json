@@ -1,0 +1,6 @@
+{
+  "name": "JUJUTSU SCRIPT PREDICTOR",
+  "description": "Hyper-premium predictive analysis platform for WinGo games powered by the authentic Jujutsu High Winning algorithm, momentum trend filters, live stats dashboard, and interactive visual interface.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
