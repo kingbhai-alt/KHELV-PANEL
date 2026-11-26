@@ -80,5 +80,19 @@
     "lastSeenAt": 1791981634017,
     "isRevoked": false,
     "boundDeviceLabel": "Android Mobile (Mobile) - Chrome"
+  },
+  {
+    "keyId": "JJS-AD876D93",
+    "licenseKey": "JUJUTSU-ADMIN-LIFETIME-AD876D93-126FFACB2-0B4D1FD827CF6121",
+    "tier": "ADMIN",
+    "duration": "LIFETIME",
+    "durationSeconds": 3153591624,
+    "createdAt": 1795665769390,
+    "expiresAt": 4949257394000,
+    "boundDeviceId": "DEV-BF2C-D665-A20A-1D8F",
+    "firstActivatedAt": 1795665769390,
+    "lastSeenAt": 1795665769390,
+    "isRevoked": false,
+    "boundDeviceLabel": "Windows PC (Desktop) - Chrome"
   }
 ]
