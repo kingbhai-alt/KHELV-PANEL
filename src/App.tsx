@@ -635,7 +635,7 @@ export default function App() {
   }, [licenseSession, selectedMode]);
 
   return (
-    <div className="relative w-screen h-[100dvh] overflow-hidden bg-[#070b14] font-sans text-slate-100 select-none">
+    <div className="relative w-full min-h-[100dvh] overflow-x-hidden bg-[#070b14] font-sans text-slate-100 select-none">
       {/* 🔐 STEP 1: MANDATORY KEY AUTHENTICATION (ASKED EVERY TIME ON OPEN) */}
       {!licenseSession && (
         <KeyGateModal
@@ -659,7 +659,7 @@ export default function App() {
 
       {/* 💻 STEP 3: MAIN EXACT DASHBOARD & D3 PATTERN ANALYSIS (AJAY CONSENSUS) */}
       {licenseSession && selectedMode && (
-        <div className="relative z-10 w-full h-[100dvh] overflow-hidden flex flex-col justify-between">
+        <div className="relative z-10 w-full min-h-[100dvh] flex flex-col">
           <JujutsuTerminal
             stats={stats}
             currentPrediction={currentPrediction}

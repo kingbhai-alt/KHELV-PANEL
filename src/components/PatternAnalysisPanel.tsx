@@ -262,7 +262,7 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
   }, [streakCounts]);
 
   return (
-    <div className="flex-1 flex flex-col p-3 pb-14 overflow-y-auto min-h-0 space-y-3">
+    <div className="flex-1 flex flex-col p-3 space-y-3">
       {/* 1. Header Banner */}
       <div className="rounded-2xl bg-[#0e0f1f] border border-amber-500/40 p-3 shadow-lg">
         <div className="flex items-center justify-between mb-1">

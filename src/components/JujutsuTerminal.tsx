@@ -131,12 +131,12 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
   const isLocked = isTargetLocked || targetProgress >= 10;
 
   return (
-    <div className="w-full max-w-md mx-auto h-[100dvh] flex flex-col justify-between text-white select-none overflow-hidden bg-[#070714]">
+    <div className="w-full max-w-md mx-auto min-h-[100dvh] flex flex-col text-white select-none bg-[#070714] pb-16">
       {/* =========================================================================
           VIEW TAB: HACK / PREDICT (Hyper-Premium Cyber Theme)
          ========================================================================= */}
       {activeTab === 'hack' && (
-        <div className="flex-1 flex flex-col p-2.5 pb-13 overflow-hidden min-h-0">
+        <div className="flex-1 flex flex-col p-2.5">
           {/* Subtle Key & Mode Switcher line */}
           <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 px-1 mb-1 shrink-0">
             {/* Mode selector */}
@@ -498,7 +498,7 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
           )}
 
           {/* 3. CARD: 📜 Live Prediction History & Win/Loss Command Center */}
-          <div className="flex-1 flex flex-col min-h-0 rounded-2xl bg-[#0e0f1f] border border-slate-800/80 p-2.5 overflow-hidden shadow-xl mb-1">
+          <div className="flex flex-col rounded-2xl bg-[#0e0f1f] border border-slate-800/80 p-2.5 shadow-xl mb-2 shrink-0 min-h-[260px]">
             {/* Live Win / Loss Command Hub */}
             <div className="shrink-0 mb-2">
               <div className="font-extrabold text-xs sm:text-sm text-[#f59e0b] mb-1.5 flex items-center justify-between">
@@ -602,17 +602,17 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
             </div>
 
             {/* Table Header */}
-            <div className="grid grid-cols-4 text-center text-[10px] font-black uppercase tracking-wider text-slate-400 py-1.5 border-b border-slate-800/80 shrink-0">
+            <div className="sticky top-0 z-10 bg-[#0e0f1f] grid grid-cols-4 text-center text-[10px] font-black uppercase tracking-wider text-slate-400 py-1.5 border-b border-slate-800/80 shrink-0">
               <div className="text-left pl-1">PERIOD</div>
               <div className="text-center">PREDICTION</div>
               <div className="text-center">ACTUAL NUMBER</div>
               <div className="text-right pr-2">STATUS</div>
             </div>
 
-            {/* Table Rows (Unlimited Scrolling with Bottom Clearance & Hyper-Premium Animations) */}
+            {/* Table Rows (Unlimited Smooth Scrolling with Bottom Clearance) */}
             <div
               ref={historyContainerRef}
-              className="flex-1 overflow-y-auto space-y-1.5 py-1.5 pb-8 pr-0.5 scrollbar-thin scrollbar-thumb-slate-800 touch-pan-y overscroll-contain"
+              className="space-y-1.5 py-1.5 pb-2"
             >
               {filteredHistory.length === 0 ? (
                 <div className="py-12 text-center text-slate-500 text-xs font-mono flex flex-col items-center justify-center gap-2">
@@ -744,7 +744,7 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
           VIEW TAB: MY (User License & KHELV PENEL Telemetry View)
          ========================================================================= */}
       {activeTab === 'my' && (
-        <div className="flex-1 flex flex-col p-3 pb-14 overflow-y-auto min-h-0">
+        <div className="flex-1 flex flex-col p-3">
           <div className="rounded-2xl bg-[#0e0f1f] border border-sky-500/40 p-3.5 mb-2.5 shadow-xl">
             <h3 className="font-extrabold text-white text-sm mb-1.5 flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#10b981]" />

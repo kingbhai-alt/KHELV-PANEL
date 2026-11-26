@@ -16,7 +16,8 @@
     font-family: -apple-system, BlinkMacSystemFont, "Outfit", "SF Pro Display", "Segoe UI", Roboto, sans-serif;
     background-color: #030712;
     color: #f8fafc;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
   }
