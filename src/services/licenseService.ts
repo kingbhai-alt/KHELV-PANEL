@@ -9,7 +9,7 @@ import { getDeviceFingerprint } from '../utils/deviceFingerprint';
 export interface LicenseSession {
   key: string;
   keyId: string;
-  tier: 'VIP' | 'PREMIUM' | 'ENTERPRISE' | 'ADMIN';
+  tier: 'VIP' | 'PREMIUM' | 'ENTERPRISE' | 'ADMIN' | 'USER';
   duration: string;
   expiresAt: number; // Unix timestamp ms
   formattedExpiry: string;
@@ -40,10 +40,12 @@ export interface VerificationResponse {
 const STORAGE_SESSION_KEY = 'jujutsu_active_license_session';
 const LOCAL_DEVICE_BINDINGS_KEY = 'khelv_penel_device_bindings_v1';
 const MASTER_CIPHER_SECRET = 'JUJUTSU_KEY_CIPHER_2026_MASTER_SECRET_984712';
+const KHELV_MASTER_CIPHER_SECRET = 'KHELV_PENEL_KEY_CIPHER_2026_MASTER_SECRET_984712';
 
 const MASTER_ADMIN_KEYS = new Set([
   'MASTER-ADMIN-655675576694',
   'JUJUTSU-ADMIN-SUPER-2026',
+  'KHELVPENEL-ADMIN-SUPER-2026',
   '655675576694',
 ]);
 
@@ -176,17 +178,21 @@ async function hmacSha256Hex(secret: string, message: string): Promise<string> {
 
 async function verifyKeySignatureClient(keyString: string): Promise<{
   valid: boolean;
-  tier?: 'VIP' | 'PREMIUM' | 'ENTERPRISE' | 'ADMIN';
+  tier?: 'VIP' | 'PREMIUM' | 'ENTERPRISE' | 'ADMIN' | 'USER';
   duration?: string;
   kid?: string;
   expiresAtMs?: number;
 }> {
-  const stripped = normalizeLicenseKey(keyString);
-  let parts = stripped.split('-');
-  if (parts.length === 5) {
-    parts = ['JUJUTSU', ...parts];
+  const upperRaw = keyString.trim().toUpperCase().replace(/^KHELV\s+PENEL(?=[-\s])/, 'KHELVPENEL');
+  let parts = upperRaw.split('-');
+
+  if (parts.length === 7 && parts[0] === 'KHELVPENEL' && parts[1] === 'JUJUTSU') {
+    parts = parts.slice(1);
   }
-  if (parts.length !== 6 || (parts[0] !== 'JUJUTSU' && parts[0] !== 'KHELV')) {
+  if (parts.length === 5) {
+    parts = ['KHELVPENEL', ...parts];
+  }
+  if (parts.length !== 6 || (parts[0] !== 'KHELVPENEL' && parts[0] !== 'JUJUTSU' && parts[0] !== 'KHELV')) {
     return { valid: false };
   }
 
@@ -196,22 +202,26 @@ async function verifyKeySignatureClient(keyString: string): Promise<{
     return { valid: false };
   }
 
+  const secrets = [KHELV_MASTER_CIPHER_SECRET, MASTER_CIPHER_SECRET];
   const payloads = [
+    `KLP:${tier}:${duration}:${kid}:${expSec}`,
     `JJS:${tier}:${duration}:${kid}:${expSec}`,
     `KHELV:${tier}:${duration}:${kid}:${expSec}`,
     `${prefix}:${tier}:${duration}:${kid}:${expSec}`,
   ];
 
-  for (const payload of payloads) {
-    const expectedFull = await hmacSha256Hex(MASTER_CIPHER_SECRET, payload);
-    if (sig === expectedFull.slice(0, 16)) {
-      return {
-        valid: true,
-        tier: tier as any,
-        duration,
-        kid: `JJS-${kid}`,
-        expiresAtMs: expSec * 1000,
-      };
+  for (const secret of secrets) {
+    for (const payload of payloads) {
+      const expectedFull = await hmacSha256Hex(secret, payload);
+      if (sig === expectedFull.slice(0, 16)) {
+        return {
+          valid: true,
+          tier: tier as any,
+          duration,
+          kid: prefix === 'JUJUTSU' ? `JJS-${kid}` : `KLP-${kid}`,
+          expiresAtMs: expSec * 1000,
+        };
+      }
     }
   }
 

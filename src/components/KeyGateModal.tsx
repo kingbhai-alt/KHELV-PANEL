@@ -140,7 +140,7 @@ export const KeyGateModal: React.FC<KeyGateModalProps> = ({
               type="text"
               value={keyInput}
               onChange={(e) => setKeyInput(e.target.value)}
-              placeholder="KHELV PENEL-JUJUTSU-VIP-7D-XXXX..."
+              placeholder="KHELVPENEL-VIP-7D-XXXXXXXX-XXXX..."
               disabled={isLoading}
               className="w-full bg-slate-950/80 border border-sky-500/40 focus:border-sky-400 focus:outline-none rounded-xl px-4 py-3 text-sm font-mono text-white placeholder-slate-600 transition-all uppercase tracking-wider"
             />

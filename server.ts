@@ -19,21 +19,22 @@ import { JAICLUB_HISTORY_500 } from './src/data/jaiclubHistory500.ts';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Master Cryptographic Secret used for HMAC-SHA256 key signing and verification
-// This same secret is used by the Jujutsu Key Generator Admin Panel
+// Master Cryptographic Secrets used for HMAC-SHA256 key signing and verification
 export const JUJUTSU_MASTER_CIPHER_SECRET = 'JUJUTSU_KEY_CIPHER_2026_MASTER_SECRET_984712';
+export const KHELV_MASTER_CIPHER_SECRET = 'KHELV_PENEL_KEY_CIPHER_2026_MASTER_SECRET_984712';
 
 // Master Admin Bypass Keys (Lifetime, unlocked on any device)
 const MASTER_ADMIN_KEYS = new Set([
   'MASTER-ADMIN-655675576694',
   'JUJUTSU-ADMIN-SUPER-2026',
+  'KHELVPENEL-ADMIN-SUPER-2026',
   '655675576694',
 ]);
 
 interface LicenseRecord {
   keyId: string;
   licenseKey: string;
-  tier: 'VIP' | 'PREMIUM' | 'ENTERPRISE' | 'ADMIN';
+  tier: 'VIP' | 'PREMIUM' | 'ENTERPRISE' | 'ADMIN' | 'USER';
   duration: string;
   durationSeconds: number;
   createdAt: number;
@@ -96,11 +97,11 @@ function saveLicenses() {
 }
 
 /**
- * Generate a cryptographically signed license key
+ * Generate a cryptographically signed license key (KHELVPENEL format)
  */
 export function generateSignedLicenseKey(
   duration: '1H' | '1D' | '7D' | '30D' | 'LIFETIME' = '7D',
-  tier: 'VIP' | 'PREMIUM' | 'ENTERPRISE' | 'ADMIN' = 'VIP'
+  tier: 'VIP' | 'PREMIUM' | 'ENTERPRISE' | 'ADMIN' | 'USER' = 'VIP'
 ): { licenseKey: string; keyId: string; expiresAt: number; durationSeconds: number } {
   let seconds = 7 * 86400;
   if (duration === '1H') seconds = 3600;
@@ -116,21 +117,20 @@ export function generateSignedLicenseKey(
   // Unique Key ID (8 hex chars)
   const kid = crypto.randomBytes(4).toString('hex').toUpperCase();
 
-  // Payload for HMAC
-  const payload = `JJS:${tier}:${duration}:${kid}:${expSec}`;
+  // Payload for HMAC (KHELV PENEL standard)
+  const payload = `KLP:${tier}:${duration}:${kid}:${expSec}`;
   const sig = crypto
-    .createHmac('sha256', JUJUTSU_MASTER_CIPHER_SECRET)
+    .createHmac('sha256', KHELV_MASTER_CIPHER_SECRET)
     .update(payload)
     .digest('hex')
     .slice(0, 16)
     .toUpperCase();
 
-  const licenseKey = `KHELV PENEL-JUJUTSU-${tier}-${duration}-${kid}-${expHex}-${sig}`;
-  const coreKey = `JUJUTSU-${tier}-${duration}-${kid}-${expHex}-${sig}`;
+  const licenseKey = `KHELVPENEL-${tier}-${duration}-${kid}-${expHex}-${sig}`;
   const expiresAt = expSec * 1000;
 
   const record: LicenseRecord = {
-    keyId: `JJS-${kid}`,
+    keyId: `KLP-${kid}`,
     licenseKey,
     tier,
     duration,
@@ -144,7 +144,7 @@ export function generateSignedLicenseKey(
   };
 
   licenseDb.set(licenseKey, record);
-  licenseDb.set(coreKey, record);
+  licenseDb.set(normalizeLicenseKey(licenseKey), record);
   licenseDb.set(record.keyId, record);
   saveLicenses();
 
@@ -157,22 +157,28 @@ export function generateSignedLicenseKey(
 }
 
 /**
- * Validates cryptographic signature of key (supports KHELV PENEL- prefix and standard JUJUTSU- keys)
+ * Validates cryptographic signature of key (supports KHELVPENEL-*, KHELV PENEL-JUJUTSU-*, and JUJUTSU-*)
  */
 function verifyKeySignature(keyString: string): {
   valid: boolean;
-  tier?: 'VIP' | 'PREMIUM' | 'ENTERPRISE' | 'ADMIN';
+  tier?: 'VIP' | 'PREMIUM' | 'ENTERPRISE' | 'ADMIN' | 'USER';
   duration?: string;
   kid?: string;
   expiresAtMs?: number;
 } {
-  const stripped = normalizeLicenseKey(keyString);
-  let parts = stripped.split('-');
-  // Allow both JUJUTSU-{TIER}-{DUR}-{KID}-{EXPHEX}-{SIG} and {TIER}-{DUR}-{KID}-{EXPHEX}-{SIG} (after KHELV PENEL prefix)
-  if (parts.length === 5) {
-    parts = ['JUJUTSU', ...parts];
+  const upperRaw = keyString.trim().toUpperCase().replace(/^KHELV\s+PENEL(?=[-\s])/, 'KHELVPENEL');
+  let parts = upperRaw.split('-');
+
+  // If user pasted "KHELV PENEL-JUJUTSU-VIP-..." or "KHELVPENEL-JUJUTSU-VIP-...", drop leading KHELVPENEL
+  if (parts.length === 7 && parts[0] === 'KHELVPENEL' && parts[1] === 'JUJUTSU') {
+    parts = parts.slice(1);
   }
-  if (parts.length !== 6 || (parts[0] !== 'JUJUTSU' && parts[0] !== 'KHELV')) {
+  // If user omitted prefix after stripping
+  if (parts.length === 5) {
+    parts = ['KHELVPENEL', ...parts];
+  }
+
+  if (parts.length !== 6 || (parts[0] !== 'KHELVPENEL' && parts[0] !== 'JUJUTSU' && parts[0] !== 'KHELV')) {
     return { valid: false };
   }
 
@@ -182,21 +188,30 @@ function verifyKeySignature(keyString: string): {
     return { valid: false };
   }
 
+  const secrets = [KHELV_MASTER_CIPHER_SECRET, JUJUTSU_MASTER_CIPHER_SECRET];
   const payloads = [
+    `KLP:${tier}:${duration}:${kid}:${expSec}`,
     `JJS:${tier}:${duration}:${kid}:${expSec}`,
     `KHELV:${tier}:${duration}:${kid}:${expSec}`,
     `${prefix}:${tier}:${duration}:${kid}:${expSec}`,
   ];
 
-  const isMatched = payloads.some((payload) => {
-    const expectedSig = crypto
-      .createHmac('sha256', JUJUTSU_MASTER_CIPHER_SECRET)
-      .update(payload)
-      .digest('hex')
-      .slice(0, 16)
-      .toUpperCase();
-    return sig === expectedSig;
-  });
+  let isMatched = false;
+  for (const secret of secrets) {
+    for (const payload of payloads) {
+      const expectedSig = crypto
+        .createHmac('sha256', secret)
+        .update(payload)
+        .digest('hex')
+        .slice(0, 16)
+        .toUpperCase();
+      if (sig === expectedSig) {
+        isMatched = true;
+        break;
+      }
+    }
+    if (isMatched) break;
+  }
 
   if (!isMatched) {
     return { valid: false };
@@ -206,7 +221,7 @@ function verifyKeySignature(keyString: string): {
     valid: true,
     tier: tier as any,
     duration,
-    kid: `JJS-${kid}`,
+    kid: prefix === 'JUJUTSU' ? `JJS-${kid}` : `KLP-${kid}`,
     expiresAtMs: expSec * 1000,
   };
 }
@@ -432,7 +447,11 @@ async function startServer() {
   app.post('/api/license/generate', (req, res) => {
     const { adminSecret, duration, tier } = req.body;
     // Allow generation if adminSecret matches or for authorized panel
-    if (adminSecret !== '655675576694' && adminSecret !== JUJUTSU_MASTER_CIPHER_SECRET) {
+    if (
+      adminSecret !== '655675576694' &&
+      adminSecret !== JUJUTSU_MASTER_CIPHER_SECRET &&
+      adminSecret !== KHELV_MASTER_CIPHER_SECRET
+    ) {
       return res.status(401).json({ error: 'Unauthorized key generation' });
     }
 
