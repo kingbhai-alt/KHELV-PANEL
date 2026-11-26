@@ -3,7 +3,6 @@ import * as d3 from 'd3';
 import { DrawItem, WinGoMode, isK3Game } from '../services/lotteryService';
 import { ClusterVote, get_big_small, UserCalculationDetail } from '../logic/jujutsuEngine';
 import { BacktestSummary } from '../logic/backtestEngine';
-import { useTheme } from '../context/ThemeContext';
 
 interface PatternAnalysisPanelProps {
   gameMode: WinGoMode;
@@ -28,7 +27,6 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
   backtestSummary,
   currentPrediction,
 }) => {
-  const { isDark } = useTheme();
   const heatmapRef = useRef<SVGSVGElement | null>(null);
   const streakBarRef = useRef<SVGSVGElement | null>(null);
   const [selectedCell, setSelectedCell] = useState<{
@@ -130,31 +128,20 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
           setSelectedCell(d);
         });
 
+      // Background rect with D3 color gradient
       const isBig = d.size === 'BIG';
       const isJackpot = d.number === 0 || d.number === 5;
-
-      const cellFill = isDark
-        ? isBig
-          ? '#24121d'
-          : '#0d221a'
-        : isBig
-        ? '#fff1f2'
-        : '#ecfdf5';
-
-      const bigTone = isDark ? '#ff4d6d' : '#e11d48';
-      const smallTone = isDark ? '#10b981' : '#059669';
-      const periodTone = isDark ? '#94a3b8' : '#475569';
 
       cellGroup
         .append('rect')
         .attr('width', cellWidth)
         .attr('height', cellHeight)
         .attr('rx', 6)
-        .attr('fill', cellFill)
-        .attr('stroke', isJackpot ? '#f59e0b' : isBig ? bigTone : smallTone)
+        .attr('fill', isBig ? '#24121d' : '#0d221a')
+        .attr('stroke', isJackpot ? '#f59e0b' : isBig ? '#ff4d6d' : '#10b981')
         .attr('stroke-width', isJackpot ? 1.5 : 1)
-        .attr('stroke-opacity', isDark ? 0.8 : 0.85)
-        .attr('filter', isJackpot ? 'drop-shadow(0 0 4px rgba(245,158,11,0.45))' : 'none');
+        .attr('stroke-opacity', 0.8)
+        .attr('filter', isJackpot ? 'drop-shadow(0 0 4px rgba(245,158,11,0.5))' : 'none');
 
       // Short Period on Top
       cellGroup
@@ -164,7 +151,7 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
         .attr('text-anchor', 'middle')
         .attr('font-size', '8px')
         .attr('font-family', 'monospace')
-        .attr('fill', periodTone)
+        .attr('fill', '#94a3b8')
         .text(d.shortPeriod);
 
       // Number in Center
@@ -176,7 +163,7 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
         .attr('font-size', '12px')
         .attr('font-weight', 'bold')
         .attr('font-family', 'monospace')
-        .attr('fill', isBig ? bigTone : smallTone)
+        .attr('fill', isBig ? '#ff4d6d' : '#10b981')
         .text(d.number);
 
       // Size tag badge bottom right
@@ -187,10 +174,10 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
         .attr('text-anchor', 'end')
         .attr('font-size', '7px')
         .attr('font-weight', 'bold')
-        .attr('fill', isBig ? bigTone : smallTone)
+        .attr('fill', isBig ? '#f43f5e' : '#34d399')
         .text(isBig ? 'B' : 'S');
     });
-  }, [outcomes, isDark]);
+  }, [outcomes]);
 
   // =========================================================================
   // D3.JS STREAK FREQUENCY BAR CHART
@@ -202,10 +189,10 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
     svg.selectAll('*').remove();
 
     const data = [
-      { label: '1x ZigZag', count: streakCounts['1x'], color: isDark ? '#38bdf8' : '#0284c7' },
-      { label: '2x Pair', count: streakCounts['2x'], color: isDark ? '#a855f7' : '#7e22ce' },
-      { label: '3x Tri', count: streakCounts['3x'], color: isDark ? '#f59e0b' : '#d97706' },
-      { label: '4x+ Dragon', count: streakCounts['4x+'], color: isDark ? '#10b981' : '#059669' },
+      { label: '1x ZigZag', count: streakCounts['1x'], color: '#38bdf8' },
+      { label: '2x Pair', count: streakCounts['2x'], color: '#a855f7' },
+      { label: '3x Tri', count: streakCounts['3x'], color: '#f59e0b' },
+      { label: '4x+ Dragon', count: streakCounts['4x+'], color: '#10b981' },
     ];
 
     const margin = { top: 15, right: 15, bottom: 25, left: 25 };
@@ -229,7 +216,7 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
 
     // Grid lines
     g.append('g')
-      .attr('stroke', isDark ? '#1e293b' : '#cbd5e1')
+      .attr('stroke', '#1e293b')
       .attr('stroke-dasharray', '2,2')
       .call(d3.axisLeft(y).ticks(3).tickSize(-width).tickFormat(() => ''));
 
@@ -245,7 +232,7 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
       .attr('height', (d) => height - y(d.count))
       .attr('rx', 4)
       .attr('fill', (d) => d.color)
-      .attr('fill-opacity', 0.88);
+      .attr('fill-opacity', 0.85);
 
     // Value Labels on Bars
     g.selectAll('.val-text')
@@ -258,7 +245,7 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
       .attr('font-size', '9px')
       .attr('font-weight', 'bold')
       .attr('font-family', 'monospace')
-      .attr('fill', isDark ? '#ffffff' : '#0f172a')
+      .attr('fill', '#ffffff')
       .text((d) => `${d.count}`);
 
     // X Axis Labels
@@ -266,83 +253,83 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
       .attr('transform', `translate(0, ${height})`)
       .call(d3.axisBottom(x).tickSize(0))
       .selectAll('text')
-      .attr('fill', isDark ? '#94a3b8' : '#475569')
+      .attr('fill', '#94a3b8')
       .attr('font-size', '9px')
       .attr('font-family', 'sans-serif')
       .attr('dy', '8px');
 
     g.select('.domain').remove();
-  }, [streakCounts, isDark]);
+  }, [streakCounts]);
 
   return (
     <div className="flex-1 flex flex-col p-3 pb-14 overflow-y-auto min-h-0 space-y-3">
       {/* 1. Header Banner */}
-      <div className="rounded-2xl bg-[var(--kp-card)] border border-amber-500/40 p-3 shadow-md">
+      <div className="rounded-2xl bg-[#0e0f1f] border border-amber-500/40 p-3 shadow-lg">
         <div className="flex items-center justify-between mb-1">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <h3 className="font-black text-sm text-[var(--kp-text)] tracking-wider">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <h3 className="font-black text-sm text-white tracking-wider">
               KHELV PENEL • 500+ BACKTEST & HEATMAP
             </h3>
           </div>
-          <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-mono font-bold border border-emerald-500/40">
+          <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 font-mono font-bold border border-emerald-500/40">
             {gameMode} LIVE
           </span>
         </div>
-        <p className="text-[11px] text-[var(--kp-muted)] leading-tight">
+        <p className="text-[11px] text-slate-400 leading-tight">
           Visualizing the last 50 game outcomes via D3.js trend matrix, streak frequencies, and AJAY 1000K+ bypass consensus voting across 170,000 pure real calculations (10 to 1,000 historical results).
         </p>
 
         {/* 4 Stat Pills */}
         <div className="grid grid-cols-4 gap-2 mt-2.5">
-          <div className="p-1.5 rounded-lg bg-[var(--kp-surface)] border border-[var(--kp-border)] text-center">
-            <div className="text-[9px] text-[var(--kp-muted)] uppercase">Outcomes</div>
-            <div className="text-xs font-mono font-bold text-[var(--kp-accent-text)]">{outcomes.length}/50</div>
+          <div className="p-1.5 rounded-lg bg-[#070714] border border-slate-800 text-center">
+            <div className="text-[9px] text-slate-400 uppercase">Outcomes</div>
+            <div className="text-xs font-mono font-bold text-sky-400">{outcomes.length}/50</div>
           </div>
-          <div className="p-1.5 rounded-lg bg-[var(--kp-surface)] border border-[var(--kp-border)] text-center">
-            <div className="text-[9px] text-[var(--kp-muted)] uppercase">Big Ratio</div>
-            <div className="text-xs font-mono font-bold text-rose-600 dark:text-[#ff4d6d]">{bigPercent}% ({bigCount})</div>
+          <div className="p-1.5 rounded-lg bg-[#070714] border border-slate-800 text-center">
+            <div className="text-[9px] text-slate-400 uppercase">Big Ratio</div>
+            <div className="text-xs font-mono font-bold text-[#ff4d6d]">{bigPercent}% ({bigCount})</div>
           </div>
-          <div className="p-1.5 rounded-lg bg-[var(--kp-surface)] border border-[var(--kp-border)] text-center">
-            <div className="text-[9px] text-[var(--kp-muted)] uppercase">Small Ratio</div>
-            <div className="text-xs font-mono font-bold text-emerald-600 dark:text-[#10b981]">{100 - bigPercent}% ({smallCount})</div>
+          <div className="p-1.5 rounded-lg bg-[#070714] border border-slate-800 text-center">
+            <div className="text-[9px] text-slate-400 uppercase">Small Ratio</div>
+            <div className="text-xs font-mono font-bold text-[#10b981]">{100 - bigPercent}% ({smallCount})</div>
           </div>
-          <div className="p-1.5 rounded-lg bg-[var(--kp-surface)] border border-[var(--kp-border)] text-center">
-            <div className="text-[9px] text-[var(--kp-muted)] uppercase">Consensus</div>
-            <div className="text-xs font-mono font-bold text-amber-600 dark:text-amber-400">{consensusRate}%</div>
+          <div className="p-1.5 rounded-lg bg-[#070714] border border-slate-800 text-center">
+            <div className="text-[9px] text-slate-400 uppercase">Consensus</div>
+            <div className="text-xs font-mono font-bold text-amber-400">{consensusRate}%</div>
           </div>
         </div>
       </div>
 
       {/* 1B. 500+ ROUND PRE-PREDICTION ALGORITHM BACKTEST LEADERBOARD */}
       {backtestSummary && (
-        <div className="rounded-2xl bg-[var(--kp-card)] border border-[var(--kp-border)] p-3 shadow-md">
+        <div className="rounded-2xl bg-[#0e0f1f] border border-sky-500/40 p-3 shadow-lg">
           <div className="flex items-center justify-between mb-2">
-            <div className="font-extrabold text-xs text-[var(--kp-accent-text)] flex items-center gap-1.5">
+            <div className="font-extrabold text-xs text-sky-400 flex items-center gap-1.5">
               <span>🧪</span>
               <span>Pre-Prediction 500+ DB Backtest Leaderboard</span>
             </div>
-            <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--kp-surface)] text-[var(--kp-accent-text)] font-mono font-bold border border-[var(--kp-border)]">
+            <span className="text-[10px] px-2 py-0.5 rounded bg-sky-950 text-sky-300 font-mono font-bold border border-sky-500/40">
               {backtestSummary.datasetSize} Rounds • {backtestSummary.executionTimeMs}ms
             </span>
           </div>
 
           <div className="grid grid-cols-3 gap-2 mb-2.5 text-center font-mono">
-            <div className="p-2 rounded-xl bg-[var(--kp-surface)] border border-[var(--kp-border)]">
-              <div className="text-[9px] text-[var(--kp-muted)] uppercase">3-Level Fix</div>
-              <div className="text-sm font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+            <div className="p-2 rounded-xl bg-[#070714] border border-slate-800">
+              <div className="text-[9px] text-slate-400 uppercase">3-Level Fix</div>
+              <div className="text-sm font-black text-emerald-400 tabular-nums">
                 {backtestSummary.bestUnder3FixRate}%
               </div>
             </div>
-            <div className="p-2 rounded-xl bg-[var(--kp-surface)] border border-[var(--kp-border)]">
-              <div className="text-[9px] text-[var(--kp-muted)] uppercase">L1 Accuracy</div>
-              <div className="text-sm font-black text-[var(--kp-accent-text)] tabular-nums">
+            <div className="p-2 rounded-xl bg-[#070714] border border-slate-800">
+              <div className="text-[9px] text-slate-400 uppercase">L1 Accuracy</div>
+              <div className="text-sm font-black text-sky-400 tabular-nums">
                 {backtestSummary.bestLevel1Accuracy}%
               </div>
             </div>
-            <div className="p-2 rounded-xl bg-[var(--kp-surface)] border border-[var(--kp-border)]">
-              <div className="text-[9px] text-[var(--kp-muted)] uppercase">Top Digit</div>
-              <div className="text-sm font-black text-amber-600 dark:text-amber-400 tabular-nums">
+            <div className="p-2 rounded-xl bg-[#070714] border border-slate-800">
+              <div className="text-[9px] text-slate-400 uppercase">Top Digit</div>
+              <div className="text-sm font-black text-amber-400 tabular-nums">
                 [{backtestSummary.recommendedDigit}]
               </div>
             </div>
@@ -354,27 +341,27 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
                 key={st.id}
                 className={`p-2 rounded-xl border text-xs flex items-center justify-between ${
                   idx === 0
-                    ? 'bg-sky-50 dark:bg-sky-950/30 border-[var(--kp-accent)]'
-                    : 'bg-[var(--kp-surface)] border-[var(--kp-border)]'
+                    ? 'bg-sky-950/30 border-sky-400/60'
+                    : 'bg-[#070714] border-slate-800/80'
                 }`}
               >
                 <div className="pr-2 min-w-0 flex-1">
-                  <div className="font-bold text-[var(--kp-text)] text-[11px] truncate">
+                  <div className="font-bold text-white text-[11px] truncate">
                     #{idx + 1} {st.name}
                   </div>
-                  <div className="text-[9.5px] text-[var(--kp-muted)] font-mono truncate">
+                  <div className="text-[9.5px] text-slate-400 font-mono truncate">
                     L1: {st.level1Accuracy}% · L2: {st.l2RecoveryRate}% · L3: {st.l3RecoveryRate}%
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0 font-mono">
-                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                  <span className="text-[10px] font-bold text-emerald-400 tabular-nums">
                     {st.under3FixRate}% Fix
                   </span>
                   <span
                     className={`px-2 py-0.5 rounded font-bold text-[10px] ${
                       st.nextVote === 'BIG'
-                        ? 'bg-rose-100 dark:bg-[#ff4d6d]/20 text-rose-700 dark:text-[#ff4d6d] border border-rose-400/50'
-                        : 'bg-emerald-100 dark:bg-[#10b981]/20 text-emerald-700 dark:text-[#10b981] border border-emerald-400/50'
+                        ? 'bg-[#ff4d6d]/20 text-[#ff4d6d] border border-[#ff4d6d]/40'
+                        : 'bg-[#10b981]/20 text-[#10b981] border border-[#10b981]/40'
                     }`}
                   >
                     {st.nextVote}
@@ -388,13 +375,13 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
 
       {/* 2. 170,000 PURE REAL DIFFERENTIATED CALCULATIONS BREAKDOWN */}
       {userCalcDetail && (
-        <div className="rounded-2xl bg-[var(--kp-card)] border border-amber-500/40 p-3 shadow-md">
+        <div className="rounded-2xl bg-[#0e0f1f] border border-amber-500/40 p-3 shadow-lg">
           <div className="flex items-center justify-between mb-2">
-            <div className="font-extrabold text-xs text-amber-600 dark:text-[#f59e0b] flex items-center gap-1.5">
+            <div className="font-extrabold text-xs text-[#f59e0b] flex items-center gap-1.5">
               <span>⚡</span>
               <span>170K Pure Real Calculations Ensemble</span>
             </div>
-            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-mono font-bold border border-emerald-500/40 animate-pulse">
+            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 font-mono font-bold border border-emerald-500/40 animate-pulse">
               170,000 Calcs Active
             </span>
           </div>
@@ -402,19 +389,17 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
           {/* 3 User Master Calculation Cards */}
           <div className="grid grid-cols-3 gap-2 text-center text-xs font-mono">
             {/* Calc 1 */}
-            <div className="p-2 rounded-xl bg-[var(--kp-surface)] border border-[var(--kp-border)] hover:border-[var(--kp-accent)] transition-colors">
-              <div className="text-[9px] text-[var(--kp-muted)]">1st: Index 0+2</div>
-              <div className="text-[11px] text-[var(--kp-accent-text)] font-bold mt-0.5 truncate">
+            <div className="p-2 rounded-xl bg-[#070714] border border-slate-800 hover:border-sky-500/40 transition-colors">
+              <div className="text-[9px] text-slate-400">1st: Index 0+2</div>
+              <div className="text-[11px] text-sky-400 font-bold mt-0.5 truncate">
                 {userCalcDetail.calc1.index0}+{userCalcDetail.calc1.index2}={userCalcDetail.calc1.sum}
               </div>
-              <div className="text-[10px] text-[var(--kp-text)]">
+              <div className="text-[10px] text-slate-300">
                 Root: <span className="font-bold">{userCalcDetail.calc1.root}</span>
               </div>
               <div
                 className={`text-xs font-bold mt-1 ${
-                  userCalcDetail.calc1.vote === 'BIG'
-                    ? 'text-rose-600 dark:text-[#ff4d6d]'
-                    : 'text-emerald-600 dark:text-[#10b981]'
+                  userCalcDetail.calc1.vote === 'BIG' ? 'text-[#ff4d6d]' : 'text-[#10b981]'
                 }`}
               >
                 {userCalcDetail.calc1.vote}
@@ -422,19 +407,17 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
             </div>
 
             {/* Calc 2 */}
-            <div className="p-2 rounded-xl bg-[var(--kp-surface)] border border-[var(--kp-border)] hover:border-[var(--kp-accent)] transition-colors">
-              <div className="text-[9px] text-[var(--kp-muted)]">2nd: Index 7+9</div>
-              <div className="text-[11px] text-[var(--kp-accent-text)] font-bold mt-0.5 truncate">
+            <div className="p-2 rounded-xl bg-[#070714] border border-slate-800 hover:border-sky-500/40 transition-colors">
+              <div className="text-[9px] text-slate-400">2nd: Index 7+9</div>
+              <div className="text-[11px] text-sky-400 font-bold mt-0.5 truncate">
                 {userCalcDetail.calc2.index7}+{userCalcDetail.calc2.index9}={userCalcDetail.calc2.sum}
               </div>
-              <div className="text-[10px] text-[var(--kp-text)]">
+              <div className="text-[10px] text-slate-300">
                 Root: <span className="font-bold">{userCalcDetail.calc2.root}</span>
               </div>
               <div
                 className={`text-xs font-bold mt-1 ${
-                  userCalcDetail.calc2.vote === 'BIG'
-                    ? 'text-rose-600 dark:text-[#ff4d6d]'
-                    : 'text-emerald-600 dark:text-[#10b981]'
+                  userCalcDetail.calc2.vote === 'BIG' ? 'text-[#ff4d6d]' : 'text-[#10b981]'
                 }`}
               >
                 {userCalcDetail.calc2.vote}
@@ -442,19 +425,17 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
             </div>
 
             {/* Calc 3 */}
-            <div className="p-2 rounded-xl bg-[var(--kp-surface)] border border-[var(--kp-border)] hover:border-[var(--kp-accent)] transition-colors">
-              <div className="text-[9px] text-[var(--kp-muted)]">3rd: Period Last3</div>
-              <div className="text-[11px] text-[var(--kp-accent-text)] font-bold mt-0.5 truncate">
+            <div className="p-2 rounded-xl bg-[#070714] border border-slate-800 hover:border-sky-500/40 transition-colors">
+              <div className="text-[9px] text-slate-400">3rd: Period Last3</div>
+              <div className="text-[11px] text-sky-400 font-bold mt-0.5 truncate">
                 {userCalcDetail.calc3.digit1}+{userCalcDetail.calc3.digit3}={userCalcDetail.calc3.sum}
               </div>
-              <div className="text-[10px] text-[var(--kp-text)]">
+              <div className="text-[10px] text-slate-300">
                 Root: <span className="font-bold">{userCalcDetail.calc3.root}</span>
               </div>
               <div
                 className={`text-xs font-bold mt-1 ${
-                  userCalcDetail.calc3.vote === 'BIG'
-                    ? 'text-rose-600 dark:text-[#ff4d6d]'
-                    : 'text-emerald-600 dark:text-[#10b981]'
+                  userCalcDetail.calc3.vote === 'BIG' ? 'text-[#ff4d6d]' : 'text-[#10b981]'
                 }`}
               >
                 {userCalcDetail.calc3.vote}
@@ -463,14 +444,14 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
           </div>
 
           {/* 170K Ensemble Tally Banner */}
-          <div className="mt-2.5 p-2 rounded-xl bg-[var(--kp-surface)] border border-[var(--kp-border)] flex items-center justify-between text-xs font-mono">
-            <span className="text-[var(--kp-muted)] text-[10px]">170,000 Grand Tally:</span>
+          <div className="mt-2.5 p-2 rounded-xl bg-[#070714] border border-slate-800/80 flex items-center justify-between text-xs font-mono">
+            <span className="text-slate-400 text-[10px]">170,000 Grand Tally:</span>
             <div className="space-x-2 text-[10px]">
-              <span className="text-rose-600 dark:text-[#ff4d6d] font-bold">
+              <span className="text-[#ff4d6d] font-bold">
                 BIG: {(userCalcDetail.total170kCalculations?.bigVotes ?? userCalcDetail.total17kCalculations.bigVotes * 10).toLocaleString()}
               </span>
-              <span className="opacity-40">|</span>
-              <span className="text-emerald-600 dark:text-[#10b981] font-bold">
+              <span className="text-slate-600">|</span>
+              <span className="text-[#10b981] font-bold">
                 SMALL: {(userCalcDetail.total170kCalculations?.smallVotes ?? userCalcDetail.total17kCalculations.smallVotes * 10).toLocaleString()}
               </span>
             </div>
@@ -478,25 +459,25 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
 
           {/* 10 Unique Calculation Families Breakdown */}
           {userCalcDetail.total170kCalculations?.families && (
-            <div className="mt-2 pt-2 border-t border-[var(--kp-border)]">
-              <div className="text-[10px] font-bold text-[var(--kp-muted)] uppercase tracking-wider mb-1.5 flex items-center justify-between">
+            <div className="mt-2 pt-2 border-t border-slate-800/60">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between">
                 <span>10 Unique Mathematical Families</span>
-                <span className="text-amber-600 dark:text-amber-400 font-mono">17,000 Calcs Each</span>
+                <span className="text-amber-400 font-mono">17,000 Calcs Each</span>
               </div>
               <div className="grid grid-cols-2 gap-1.5 text-[9.5px] font-mono max-h-40 overflow-y-auto scrollbar-thin">
                 {userCalcDetail.total170kCalculations.families.map((fam) => (
                   <div
                     key={fam.id}
-                    className="p-1.5 rounded-lg bg-[var(--kp-surface)] border border-[var(--kp-border)] flex items-center justify-between"
+                    className="p-1.5 rounded-lg bg-[#05050f] border border-slate-800/60 flex items-center justify-between"
                   >
                     <div className="truncate pr-1">
-                      <span className="text-[var(--kp-text)] font-medium">#{fam.id} {fam.familyName}</span>
+                      <span className="text-slate-300 font-medium">#{fam.id} {fam.familyName}</span>
                     </div>
                     <span
                       className={`px-1.5 py-0.2 rounded font-bold text-[9px] ${
                         fam.winningVote === 'BIG'
-                          ? 'bg-rose-100 dark:bg-[#ff4d6d]/20 text-rose-700 dark:text-[#ff4d6d] border border-rose-400/50'
-                          : 'bg-emerald-100 dark:bg-[#10b981]/20 text-emerald-700 dark:text-[#10b981] border border-emerald-400/50'
+                          ? 'bg-[#ff4d6d]/20 text-[#ff4d6d] border border-[#ff4d6d]/40'
+                          : 'bg-[#10b981]/20 text-[#10b981] border border-[#10b981]/40'
                       }`}
                     >
                       {fam.winningVote}
@@ -510,21 +491,21 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
       )}
 
       {/* 3. D3.JS TREND HEATMAP (50 Game Outcomes Matrix) */}
-      <div className="rounded-2xl bg-[var(--kp-card)] border border-[var(--kp-border)] p-3 shadow-md">
+      <div className="rounded-2xl bg-[#0e0f1f] border border-slate-800 p-3 shadow-lg">
         <div className="flex items-center justify-between mb-2">
-          <div className="font-extrabold text-xs text-amber-600 dark:text-[#f59e0b] flex items-center gap-1.5">
+          <div className="font-extrabold text-xs text-[#f59e0b] flex items-center gap-1.5">
             <span>🔥</span>
             <span>50-Round Trend Heatmap (D3.js Grid)</span>
           </div>
-          <div className="flex items-center gap-2 text-[9px] font-mono text-[var(--kp-muted)]">
+          <div className="flex items-center gap-2 text-[9px] font-mono">
             <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded bg-rose-600 dark:bg-[#ff4d6d]" /> Big
+              <span className="w-2 h-2 rounded bg-[#ff4d6d]" /> Big
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded bg-emerald-600 dark:bg-[#10b981]" /> Small
+              <span className="w-2 h-2 rounded bg-[#10b981]" /> Small
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded bg-amber-500" /> Jackpot
+              <span className="w-2 h-2 rounded bg-amber-400" /> Jackpot
             </span>
           </div>
         </div>
@@ -536,15 +517,15 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
 
         {/* Selected cell detail tooltip card */}
         {selectedCell && (
-          <div className="mt-2 p-2 rounded-xl bg-[var(--kp-surface)] border border-amber-500/50 flex items-center justify-between text-xs font-mono">
+          <div className="mt-2 p-2 rounded-xl bg-[#070714] border border-amber-500/50 flex items-center justify-between text-xs font-mono">
             <div>
-              <span className="text-[var(--kp-muted)]">Period: </span>
-              <span className="text-[var(--kp-accent-text)] font-bold">{selectedCell.period}</span>
-              <span className="mx-2 opacity-40">|</span>
-              <span className="text-[var(--kp-muted)]">Drawn: </span>
-              <span className="text-amber-600 dark:text-amber-400 font-bold">{selectedCell.number} ({selectedCell.size})</span>
+              <span className="text-slate-400">Period: </span>
+              <span className="text-sky-300 font-bold">{selectedCell.period}</span>
+              <span className="mx-2 text-slate-600">|</span>
+              <span className="text-slate-400">Drawn: </span>
+              <span className="text-amber-400 font-bold">{selectedCell.number} ({selectedCell.size})</span>
             </div>
-            <span className="px-2 py-0.5 rounded bg-[var(--kp-card)] border border-[var(--kp-border)] text-emerald-600 dark:text-emerald-400 text-[10px]">
+            <span className="px-2 py-0.5 rounded bg-slate-800 text-emerald-400 text-[10px]">
               {selectedCell.pattern}
             </span>
           </div>
@@ -552,12 +533,12 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
       </div>
 
       {/* 3. D3.JS STREAK FREQUENCY DISTRIBUTION BAR CHART */}
-      <div className="rounded-2xl bg-[var(--kp-card)] border border-[var(--kp-border)] p-3 shadow-md">
-        <div className="font-extrabold text-xs text-amber-600 dark:text-[#f59e0b] mb-1 flex items-center gap-1.5">
+      <div className="rounded-2xl bg-[#0e0f1f] border border-slate-800 p-3 shadow-lg">
+        <div className="font-extrabold text-xs text-[#f59e0b] mb-1 flex items-center gap-1.5">
           <span>📊</span>
           <span>Consecutive Streak & Switch Distribution</span>
         </div>
-        <p className="text-[10px] text-[var(--kp-muted)] mb-2">
+        <p className="text-[10px] text-slate-400 mb-2">
           Shows how frequently the market oscillates as single ZigZags (1x), 2x pairs, 3x runs, or 4x+ Dragons.
         </p>
 
@@ -567,17 +548,17 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
       </div>
 
       {/* 4. AJAY 1000K+ BYPASS MULTI-MARKET VOTING CONSENSUS MATRIX */}
-      <div className="rounded-2xl bg-[var(--kp-card)] border border-[var(--kp-border)] p-3 shadow-md">
+      <div className="rounded-2xl bg-[#0e0f1f] border border-slate-800 p-3 shadow-lg">
         <div className="flex items-center justify-between mb-2">
-          <div className="font-extrabold text-xs text-amber-600 dark:text-[#f59e0b] flex items-center gap-1.5">
+          <div className="font-extrabold text-xs text-[#f59e0b] flex items-center gap-1.5">
             <span>🗳️</span>
             <span>1000K+ Bypass Market Voting Consensus</span>
           </div>
-          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono font-bold">
+          <span className="text-[10px] text-emerald-400 font-mono font-bold">
             1,024,000 Nodes Voting
           </span>
         </div>
-        <p className="text-[10px] text-[var(--kp-muted)] mb-2.5">
+        <p className="text-[10px] text-slate-400 mb-2.5">
           10 independent bypass clusters analyze the market from distinct strategic angles and cast weighted votes:
         </p>
 
@@ -588,13 +569,13 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
             return (
               <div
                 key={idx}
-                className="p-2 rounded-xl bg-[var(--kp-surface)] border border-[var(--kp-border)] flex items-center justify-between text-xs"
+                className="p-2 rounded-xl bg-[#070714] border border-slate-800/80 flex items-center justify-between text-xs"
               >
                 <div className="flex-1 pr-2">
-                  <div className="font-bold text-[var(--kp-text)] text-[11px] truncate">
+                  <div className="font-bold text-white text-[11px] truncate">
                     {vote.clusterName}
                   </div>
-                  <div className="text-[10px] text-[var(--kp-muted)] truncate">
+                  <div className="text-[10px] text-slate-400 truncate">
                     {vote.strategy}
                   </div>
                 </div>
@@ -604,17 +585,17 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
                     <span
                       className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
                         isBig
-                          ? 'bg-rose-100 dark:bg-[#ff4d6d]/20 text-rose-700 dark:text-[#ff4d6d] border border-rose-400/50'
-                          : 'bg-emerald-100 dark:bg-[#10b981]/20 text-emerald-700 dark:text-[#10b981] border border-emerald-400/50'
+                          ? 'bg-[#ff4d6d]/20 text-[#ff4d6d] border border-[#ff4d6d]/40'
+                          : 'bg-[#10b981]/20 text-[#10b981] border border-[#10b981]/40'
                       }`}
                     >
                       {vote.voteSize}
                     </span>
-                    <div className="text-[9px] font-mono text-amber-600 dark:text-amber-400 mt-0.5 font-bold">
+                    <div className="text-[9px] font-mono text-amber-400 mt-0.5">
                       {vote.voteNumbers[0]} , {vote.voteNumbers[1]}
                     </div>
                   </div>
-                  <span className="text-[10px] font-mono text-[var(--kp-accent-text)] font-bold min-w-[28px] text-right">
+                  <span className="text-[10px] font-mono text-sky-400 font-bold min-w-[28px] text-right">
                     {vote.confidence}%
                   </span>
                 </div>
@@ -625,23 +606,23 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
 
         {/* Final Consensus Summary Box */}
         {currentPrediction && (
-          <div className="mt-3 p-2.5 rounded-xl bg-amber-50 dark:bg-gradient-to-r dark:from-amber-500/10 dark:via-emerald-500/10 dark:to-sky-500/10 border border-amber-500/40 flex items-center justify-between">
+          <div className="mt-3 p-2.5 rounded-xl bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-sky-500/10 border border-amber-500/40 flex items-center justify-between">
             <div>
-              <div className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
+              <div className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">
                 Consensus Winning Decision
               </div>
-              <div className="text-xs font-mono text-[var(--kp-muted)]">
-                Size: <span className="text-[var(--kp-text)] font-bold">{currentPrediction.prediction}</span> | 2 Nos:{' '}
-                <span className="text-amber-600 dark:text-amber-400 font-bold">
+              <div className="text-xs font-mono text-slate-300">
+                Size: <span className="text-white font-bold">{currentPrediction.prediction}</span> | 2 Nos:{' '}
+                <span className="text-amber-400 font-bold">
                   {currentPrediction.predictedNumbers?.join(' , ') || '6 , 7'}
                 </span>
               </div>
             </div>
             <div className="text-right">
-              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+              <span className="text-xs font-bold text-emerald-400 font-mono">
                 {consensusRate}% VOTE
               </span>
-              <div className="text-[9px] text-[var(--kp-muted)]">Majority Locked</div>
+              <div className="text-[9px] text-slate-400">Majority Locked</div>
             </div>
           </div>
         )}

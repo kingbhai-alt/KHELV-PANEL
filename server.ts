@@ -4,7 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import crypto from 'crypto';
-import { requireAuth, AuthRequest, createSessionToken } from './src/middleware/auth.ts';
+import { requireAuth, AuthRequest } from './src/middleware/auth.ts';
 import {
   ensureJaiClub500Seeded,
   getStoredDraws,
@@ -27,8 +27,6 @@ export const JUJUTSU_MASTER_CIPHER_SECRET = 'JUJUTSU_KEY_CIPHER_2026_MASTER_SECR
 const MASTER_ADMIN_KEYS = new Set([
   'MASTER-ADMIN-655675576694',
   'JUJUTSU-ADMIN-SUPER-2026',
-  'KHELV-PENEL-ADMIN-SUPER-2026',
-  'KHELV-ADMIN-SUPER-2026',
   '655675576694',
 ]);
 
@@ -89,7 +87,7 @@ function saveLicenses() {
 }
 
 /**
- * Generate a cryptographically signed KHELV PENEL license key
+ * Generate a cryptographically signed license key
  */
 export function generateSignedLicenseKey(
   duration: '1H' | '1D' | '7D' | '30D' | 'LIFETIME' = '7D',
@@ -118,11 +116,11 @@ export function generateSignedLicenseKey(
     .slice(0, 16)
     .toUpperCase();
 
-  const licenseKey = `KHELV-PENEL-${tier}-${duration}-${kid}-${expHex}-${sig}`;
+  const licenseKey = `JUJUTSU-${tier}-${duration}-${kid}-${expHex}-${sig}`;
   const expiresAt = expSec * 1000;
 
   const record: LicenseRecord = {
-    keyId: `KHELV-${kid}`,
+    keyId: `JJS-${kid}`,
     licenseKey,
     tier,
     duration,
@@ -147,25 +145,8 @@ export function generateSignedLicenseKey(
   };
 }
 
-const KEY_CANDIDATE_SECRETS = [
-  JUJUTSU_MASTER_CIPHER_SECRET,
-  'KHELV_PENEL_KEY_CIPHER_2026_MASTER_SECRET_984712',
-  'KHELV_KEY_CIPHER_2026_MASTER_SECRET_984712',
-  'KHELV PENEL_KEY_CIPHER_2026_MASTER_SECRET_984712',
-];
-
-const KEY_CANDIDATE_TAGS = [
-  'JJS',
-  'KHELV',
-  'KP',
-  'KHELV-PENEL',
-  'KHELV_PENEL',
-  'KHELV PENEL',
-  'KHELVPENEL',
-];
-
 /**
- * Validates cryptographic signature of KHELV PENEL and legacy JUJUTSU keys
+ * Validates cryptographic signature of key
  */
 function verifyKeySignature(keyString: string): {
   valid: boolean;
@@ -174,59 +155,35 @@ function verifyKeySignature(keyString: string): {
   kid?: string;
   expiresAtMs?: number;
 } {
-  // Supports:
-  // KHELV-PENEL-{TIER}-{DUR}-{KID}-{EXPHEX}-{SIG}
-  // KHELV PENEL-{TIER}-{DUR}-{KID}-{EXPHEX}-{SIG}
-  // KHELV_PENEL-{TIER}-{DUR}-{KID}-{EXPHEX}-{SIG}
-  // KHELVPENEL-{TIER}-{DUR}-{KID}-{EXPHEX}-{SIG}
-  // KHELV-{TIER}-{DUR}-{KID}-{EXPHEX}-{SIG}
-  // JUJUTSU-{TIER}-{DUR}-{KID}-{EXPHEX}-{SIG}
-  const clean = keyString.trim().toUpperCase();
-  const match = clean.match(
-    /^(?:KHELV[\s_-]*PENEL|KHELV|JUJUTSU)[-\s_]+([A-Z]+)-([A-Z0-9]+)-([A-Z0-9]+)-([A-F0-9]+)-([A-F0-9]{12,32})$/
-  );
-  if (!match) {
+  // Format: JUJUTSU-{TIER}-{DUR}-{KID}-{EXPHEX}-{SIG}
+  const parts = keyString.trim().split('-');
+  if (parts.length !== 6 || parts[0] !== 'JUJUTSU') {
     return { valid: false };
   }
 
-  const [, tier, duration, kid, expHex, sig] = match;
+  const [_, tier, duration, kid, expHex, sig] = parts;
   const expSec = parseInt(expHex, 16);
   if (isNaN(expSec)) {
     return { valid: false };
   }
 
-  const sigBuf = Buffer.from(sig, 'utf-8');
-  let verified = false;
+  const payload = `JJS:${tier}:${duration}:${kid}:${expSec}`;
+  const expectedSig = crypto
+    .createHmac('sha256', JUJUTSU_MASTER_CIPHER_SECRET)
+    .update(payload)
+    .digest('hex')
+    .slice(0, 16)
+    .toUpperCase();
 
-  for (const secret of KEY_CANDIDATE_SECRETS) {
-    for (const tag of KEY_CANDIDATE_TAGS) {
-      const payload = `${tag}:${tier}:${duration}:${kid}:${expSec}`;
-      const expectedSig = crypto
-        .createHmac('sha256', secret)
-        .update(payload)
-        .digest('hex')
-        .slice(0, sig.length)
-        .toUpperCase();
-
-      const expectedBuf = Buffer.from(expectedSig, 'utf-8');
-      if (sigBuf.length === expectedBuf.length && crypto.timingSafeEqual(sigBuf, expectedBuf)) {
-        verified = true;
-        break;
-      }
-    }
-    if (verified) break;
-  }
-
-  if (!verified) {
+  if (sig !== expectedSig) {
     return { valid: false };
   }
 
-  const prefix = clean.startsWith('JUJUTSU') ? 'JJS' : 'KHELV';
   return {
     valid: true,
     tier: tier as any,
     duration,
-    kid: `${prefix}-${kid}`,
+    kid: `JJS-${kid}`,
     expiresAtMs: expSec * 1000,
   };
 }
@@ -272,20 +229,10 @@ async function startServer() {
       }
 
       const cleanKey = licenseKey.trim();
-      const upperKey = cleanKey.toUpperCase();
 
       // Check 1: Master Admin Bypass Key
-      if (MASTER_ADMIN_KEYS.has(cleanKey) || MASTER_ADMIN_KEYS.has(upperKey)) {
+      if (MASTER_ADMIN_KEYS.has(cleanKey)) {
         const expMs = Date.now() + 100 * 365 * 86400 * 1000;
-        const adminUid = `device:${deviceFingerprint}`;
-        const adminAuthToken = createSessionToken({
-          uid: adminUid,
-          email: 'master-admin@khelv.local',
-          keyId: 'JJS-MASTER-ADMIN',
-          tier: 'ADMIN',
-          deviceId: deviceFingerprint,
-          exp: expMs,
-        });
         const adminSession = {
           key: cleanKey,
           keyId: 'JJS-MASTER-ADMIN',
@@ -297,7 +244,6 @@ async function startServer() {
           deviceLabel: deviceLabel || 'Authorized Terminal',
           activatedAt: Date.now(),
           isAdmin: true,
-          authToken: adminAuthToken,
         };
         return res.json({
           valid: true,
@@ -307,11 +253,11 @@ async function startServer() {
       }
 
       // Check 2: Check in License Database or Verify Cryptographic Signature
-      let record = licenseDb.get(cleanKey) || licenseDb.get(upperKey);
+      let record = licenseDb.get(cleanKey);
 
       if (!record) {
-        // Attempt signature verification (in case key was generated by external KHELV PENEL Key Generator)
-        const cryptoCheck = verifyKeySignature(upperKey);
+        // Attempt signature verification (in case key was generated by external Key Generator with matching secret)
+        const cryptoCheck = verifyKeySignature(cleanKey);
         if (!cryptoCheck.valid || !cryptoCheck.kid || !cryptoCheck.expiresAtMs) {
           return res.status(403).json({
             valid: false,
@@ -323,7 +269,7 @@ async function startServer() {
         // Dynamically register verified cryptographic key into database
         record = {
           keyId: cryptoCheck.kid,
-          licenseKey: upperKey,
+          licenseKey: cleanKey,
           tier: cryptoCheck.tier || 'VIP',
           duration: cryptoCheck.duration || '7D',
           durationSeconds: Math.floor((cryptoCheck.expiresAtMs - Date.now()) / 1000),
@@ -334,7 +280,7 @@ async function startServer() {
           lastSeenAt: null,
           isRevoked: false,
         };
-        licenseDb.set(upperKey, record);
+        licenseDb.set(cleanKey, record);
         licenseDb.set(record.keyId, record);
       }
 
@@ -366,15 +312,6 @@ async function startServer() {
         record.lastSeenAt = now;
         saveLicenses();
 
-        const authToken = createSessionToken({
-          uid: `device:${deviceFingerprint}`,
-          email: `${record.keyId.toLowerCase()}@khelv.local`,
-          keyId: record.keyId,
-          tier: record.tier,
-          deviceId: record.boundDeviceId,
-          exp: record.expiresAt,
-        });
-
         return res.json({
           valid: true,
           message: `KEY ACTIVATED & LOCKED TO DEVICE [${deviceFingerprint.slice(0, 12)}...]! Cannot be transferred.`,
@@ -389,7 +326,6 @@ async function startServer() {
             deviceLabel: record.boundDeviceLabel || deviceLabel,
             activatedAt: record.firstActivatedAt,
             isAdmin: record.tier === 'ADMIN',
-            authToken,
           },
         });
       } else {
@@ -398,15 +334,6 @@ async function startServer() {
           // SAME DEVICE: RE-LOGIN APPROVED
           record.lastSeenAt = now;
           saveLicenses();
-
-          const authToken = createSessionToken({
-            uid: `device:${deviceFingerprint}`,
-            email: `${record.keyId.toLowerCase()}@khelv.local`,
-            keyId: record.keyId,
-            tier: record.tier,
-            deviceId: record.boundDeviceId,
-            exp: record.expiresAt,
-          });
 
           return res.json({
             valid: true,
@@ -422,7 +349,6 @@ async function startServer() {
               deviceLabel: record.boundDeviceLabel || deviceLabel,
               activatedAt: record.firstActivatedAt,
               isAdmin: record.tier === 'ADMIN',
-              authToken,
             },
           });
         } else {
@@ -447,17 +373,12 @@ async function startServer() {
   // Session Heartbeat Endpoint
   app.post('/api/license/check-session', (req, res) => {
     const { keyId, licenseKey, deviceId } = req.body;
-    const cleanKey = typeof licenseKey === 'string' ? licenseKey.trim() : '';
-    const upperKey = cleanKey.toUpperCase();
 
-    if (cleanKey && (MASTER_ADMIN_KEYS.has(cleanKey) || MASTER_ADMIN_KEYS.has(upperKey))) {
+    if (licenseKey && MASTER_ADMIN_KEYS.has(licenseKey)) {
       return res.json({ active: true, isAdmin: true });
     }
 
-    const record =
-      licenseDb.get(cleanKey) ||
-      licenseDb.get(upperKey) ||
-      (keyId ? licenseDb.get(keyId) : undefined);
+    const record = licenseDb.get(licenseKey) || (keyId ? licenseDb.get(keyId) : undefined);
     if (!record) {
       return res.json({ active: false, reason: 'KEY_NOT_FOUND' });
     }

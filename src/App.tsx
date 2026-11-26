@@ -34,8 +34,14 @@ import {
   saveBacktestReportToDatabase,
   StoredPredictionLog,
 } from './services/dbService';
+import { useAuth } from './context/AuthContext';
 
 export default function App() {
+  const { idToken } = useAuth();
+  const idTokenRef = useRef<string | null>(idToken);
+  useEffect(() => {
+    idTokenRef.current = idToken;
+  }, [idToken]);
 
   // 🔐 1. Key authentication required every single time app opens/reloads
   const [licenseSession, setLicenseSession] = useState<LicenseSession | null>(null);
@@ -282,7 +288,7 @@ export default function App() {
 
     const processLotteryRound = async () => {
       try {
-        const token = licenseSession.authToken || getMemoryAuthToken();
+        const token = idTokenRef.current || licenseSession.authToken || getMemoryAuthToken();
 
         if (!dbDrawsLoadedOnce && token) {
           dbDrawsLoadedOnce = true;
@@ -634,7 +640,7 @@ export default function App() {
   }, [licenseSession, selectedMode]);
 
   return (
-    <div className="relative w-screen h-[100dvh] overflow-hidden bg-[var(--kp-bg)] font-sans text-[var(--kp-text)] select-none transition-colors duration-200">
+    <div className="relative w-screen h-[100dvh] overflow-hidden bg-[#070b14] font-sans text-slate-100 select-none">
       {/* 🔐 STEP 1: MANDATORY KEY AUTHENTICATION (ASKED EVERY TIME ON OPEN) */}
       {!licenseSession && (
         <KeyGateModal
