@@ -612,7 +612,7 @@ export function jujutsu_high_winning_predictor(
   // ==========================================================
   {
     votes.push({
-      clusterName: 'AJAY Cluster #Alpha [User Digital Root Master]',
+      clusterName: 'KHELV GAME PENEL Cluster #Alpha [User Digital Root Master]',
       nodeCount: 102400,
       voteSize: userMasterSize,
       voteNumbers: getDynamicPair(userMasterSize, 0),
@@ -628,7 +628,7 @@ export function jujutsu_high_winning_predictor(
   {
     const calc170kSize = userCalcDetail.total170kCalculations.winningSize;
     votes.push({
-      clusterName: 'AJAY Cluster #Beta [170K Pure Real Calculations]',
+      clusterName: 'KHELV GAME PENEL Cluster #Beta [170K Pure Real Calculations]',
       nodeCount: 102400,
       voteSize: calc170kSize,
       voteNumbers: getDynamicPair(calc170kSize, 1),
@@ -659,7 +659,7 @@ export function jujutsu_high_winning_predictor(
     }
 
     votes.push({
-      clusterName: `AJAY Cluster #Gamma [Level-${currentLevel} Fix-Win Engine]`,
+      clusterName: `KHELV GAME PENEL Cluster #Gamma [Level-${currentLevel} Fix-Win Engine]`,
       nodeCount: 102400,
       voteSize,
       voteNumbers: getDynamicPair(voteSize, 2),
@@ -678,7 +678,7 @@ export function jujutsu_high_winning_predictor(
     }
 
     votes.push({
-      clusterName: 'AJAY Cluster #Delta [ZigZag Parity Oscillator]',
+      clusterName: 'KHELV GAME PENEL Cluster #Delta [ZigZag Parity Oscillator]',
       nodeCount: 102400,
       voteSize,
       voteNumbers: getDynamicPair(voteSize, 3),
@@ -697,7 +697,7 @@ export function jujutsu_high_winning_predictor(
     }
 
     votes.push({
-      clusterName: 'AJAY Cluster #Epsilon [Dragon Momentum Lock]',
+      clusterName: 'KHELV GAME PENEL Cluster #Epsilon [Dragon Momentum Lock]',
       nodeCount: 102400,
       voteSize,
       voteNumbers: getDynamicPair(voteSize, 4),
@@ -712,7 +712,7 @@ export function jujutsu_high_winning_predictor(
   {
     const voteSize = userCalcDetail.calc1.vote;
     votes.push({
-      clusterName: 'AJAY Cluster #Zeta [Index 0+2 Digital Root]',
+      clusterName: 'KHELV GAME PENEL Cluster #Zeta [Index 0+2 Digital Root]',
       nodeCount: 102400,
       voteSize,
       voteNumbers: getDynamicPair(voteSize, 5),
@@ -727,7 +727,7 @@ export function jujutsu_high_winning_predictor(
   {
     const voteSize = userCalcDetail.calc2.vote;
     votes.push({
-      clusterName: 'AJAY Cluster #Eta [Index 7+9 Digital Root]',
+      clusterName: 'KHELV GAME PENEL Cluster #Eta [Index 7+9 Digital Root]',
       nodeCount: 102400,
       voteSize,
       voteNumbers: getDynamicPair(voteSize, 6),
@@ -742,7 +742,7 @@ export function jujutsu_high_winning_predictor(
   {
     const voteSize = userCalcDetail.calc3.vote;
     votes.push({
-      clusterName: 'AJAY Cluster #Theta [Period Last3 1st+3rd Root]',
+      clusterName: 'KHELV GAME PENEL Cluster #Theta [Period Last3 1st+3rd Root]',
       nodeCount: 102400,
       voteSize,
       voteNumbers: getDynamicPair(voteSize, 7),
@@ -759,7 +759,7 @@ export function jujutsu_high_winning_predictor(
     const topPair = getDynamicPair(voteSize, 0);
 
     votes.push({
-      clusterName: 'AJAY Cluster #Iota [Jackpot Number Synthesizer]',
+      clusterName: 'KHELV GAME PENEL Cluster #Iota [Jackpot Number Synthesizer]',
       nodeCount: 102400,
       voteSize,
       voteNumbers: topPair,
@@ -775,7 +775,7 @@ export function jujutsu_high_winning_predictor(
     const arbiterVote: PredictionResult = baseSize;
 
     votes.push({
-      clusterName: 'AJAY Cluster #Kappa [Byzantine Fault-Tolerant Arbiter]',
+      clusterName: 'KHELV GAME PENEL Cluster #Kappa [Byzantine Fault-Tolerant Arbiter]',
       nodeCount: 102400,
       voteSize: arbiterVote,
       voteNumbers: getDynamicPair(arbiterVote, 8),
@@ -790,7 +790,7 @@ export function jujutsu_high_winning_predictor(
   {
     const btVote = backtestSummary.recommendedSizeForLevel;
     votes.push({
-      clusterName: `KHELV Backtest Champion [${backtestSummary.bestStrategyName}]`,
+      clusterName: `KHELV GAME PENEL Champion [${backtestSummary.bestStrategyName}]`,
       nodeCount: 204800,
       voteSize: btVote,
       voteNumbers: getDynamicPair(btVote, 9),
@@ -935,7 +935,7 @@ export function jujutsu_high_winning_predictor(
     backtestSummary.dbFeedbackCount > 0
       ? ` + ${backtestSummary.dbFeedbackCount} DB Logs`
       : '';
-  const rule = `KHELV PENEL (${backtestSummary.datasetSize} DB Rounds${dbTag} | ${backtestSummary.bestStrategyName} ${backtestSummary.bestUnder3FixRate}% L3-Fix) [L${currentLevel}]`;
+  const rule = `KHELV GAME PENEL (${backtestSummary.datasetSize} DB Rounds${dbTag} | ${backtestSummary.bestStrategyName} ${backtestSummary.bestUnder3FixRate}% L3-Fix) [L${currentLevel}]`;
 
   return {
     prediction: finalPrediction,

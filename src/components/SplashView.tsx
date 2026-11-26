@@ -23,14 +23,14 @@ export const SplashView: React.FC<SplashViewProps> = ({ onStart }) => {
         <div className="absolute inset-0 rounded-full border-4 border-dashed border-sky-400/40 animate-spin-slow pointer-events-none" />
         <div className="absolute -inset-3 rounded-full border-2 border-dotted border-red-500/30 animate-spin-rev pointer-events-none" />
         <BrandLogo
-          alt="KHELV PENEL Mascot"
+          alt="KHELV GAME PENEL Mascot"
           className="w-32 h-32 rounded-full shadow-[0_18px_45px_rgba(14,165,233,0.35)] animate-logo-pulse"
         />
       </div>
 
       {/* Titles */}
       <h1 className="text-3xl sm:text-4xl font-extrabold tracking-wider bg-gradient-to-r from-sky-400 via-blue-400 to-emerald-400 bg-clip-text text-transparent drop-shadow-md">
-        KHELV PENEL
+        KHELV GAME PENEL
       </h1>
       <div className="mt-2 text-xs font-mono tracking-widest text-sky-300 uppercase px-3 py-1 bg-sky-950/60 border border-sky-800/40 rounded-full">
         500+ HISTORY BACKTEST • 3-LEVEL FIX WIN

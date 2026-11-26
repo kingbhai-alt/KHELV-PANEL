@@ -171,14 +171,14 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
               )}
             </div>
 
-            {/* Panel Title: KHELV PENEL with Brand Logo */}
+            {/* Panel Title: KHELV GAME PENEL with Brand Logo */}
             <div className="flex items-center gap-1.5">
               <BrandLogo
-                alt="KHELV PENEL"
+                alt="KHELV GAME PENEL"
                 className="w-5 h-5 rounded-md border border-sky-400/60 shadow-[0_0_8px_rgba(56,189,248,0.45)]"
               />
               <span className="font-black tracking-widest text-xs text-sky-400">
-                KHELV PENEL
+                KHELV GAME PENEL
               </span>
             </div>
 
@@ -196,7 +196,7 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
           {showKeyModal && (
             <div className="mb-2 p-2.5 rounded-xl bg-[#0e0f1f] border border-slate-700 text-xs font-mono flex items-center justify-between shrink-0 shadow-xl">
               <div>
-                <span className="text-emerald-400 font-bold">AJAY HARDWARE LOCK: </span>
+                <span className="text-emerald-400 font-bold">KHELV GAME PENEL LOCK: </span>
                 <span className="text-slate-300">{licenseSession?.deviceId?.slice(0, 12)}...</span>
                 <div className="text-[10px] text-slate-400">Validity: {remainingTimeStr}</div>
               </div>
@@ -741,14 +741,14 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
       )}
 
       {/* =========================================================================
-          VIEW TAB: MY (User License & KHELV PENEL Telemetry View)
+          VIEW TAB: MY (User License & KHELV GAME PENEL Telemetry View)
          ========================================================================= */}
       {activeTab === 'my' && (
         <div className="flex-1 flex flex-col p-3">
           <div className="rounded-2xl bg-[#0e0f1f] border border-sky-500/40 p-3.5 mb-2.5 shadow-xl">
             <h3 className="font-extrabold text-white text-sm mb-1.5 flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#10b981]" />
-              <span>KHELV PENEL • 500+ ROUND BACKTEST ENGINE</span>
+              <span>KHELV GAME PENEL • 500+ ROUND BACKTEST ENGINE</span>
             </h3>
             <p className="text-xs text-slate-400 leading-relaxed mb-2.5">
               1,024,000+ Consensus Nodes integrated with real-time 500+ round historical database backtesting, 170,000 calculations, Target 10-Win Protocol, and 3-Level Fix-Win Recovery.
@@ -793,7 +793,7 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
           {/* License & Account Details */}
           <div className="rounded-2xl bg-[#0e0f1f] border border-slate-800 p-3.5 shadow-xl">
             <div className="flex items-center justify-between mb-2">
-              <h4 className="font-bold text-white text-xs">KHELV PENEL ACCOUNT & DEVICE</h4>
+              <h4 className="font-bold text-white text-xs">KHELV GAME PENEL ACCOUNT & DEVICE</h4>
             </div>
             <div className="text-xs font-mono space-y-1.5 text-slate-300 tabular-nums">
               <div>
@@ -873,7 +873,7 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
           </svg>
-          <span className="text-[9.5px]">KHELV My</span>
+          <span className="text-[9.5px] whitespace-nowrap">KHELV GAME PENEL</span>
         </button>
       </div>
     </div>

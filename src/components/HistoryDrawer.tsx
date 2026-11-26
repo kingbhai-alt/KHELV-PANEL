@@ -49,7 +49,7 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
         <span className="w-5 h-5 rounded-lg bg-gradient-to-br from-sky-400 to-sky-600 flex items-center justify-center text-[10px] shadow-sm animate-pulse">
           🕘
         </span>
-        <span className="tracking-wide">AJAY Live History</span>
+        <span className="tracking-wide">KHELV GAME PENEL History</span>
         <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-mono font-black text-[10px]">
           {winsCount}W / {lossCount}L
         </span>
@@ -67,7 +67,7 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
 
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2 tracking-wider">
-              <span>📜 AJAY Prediction Command History</span>
+              <span>📜 KHELV GAME PENEL History</span>
             </h3>
 
             <div className="flex items-center gap-2">

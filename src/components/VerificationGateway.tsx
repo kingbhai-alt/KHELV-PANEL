@@ -212,7 +212,7 @@ export const VerificationGateway: React.FC<VerificationGatewayProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-black tracking-wider text-white flex items-center gap-2">
-                <span>JUJUTSU SCRIPT PREDICTOR</span>
+                <span>KHELV GAME PENEL</span>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-red-900/80 text-red-200 font-mono border border-red-500/60">
                   500+ LAYERS
                 </span>

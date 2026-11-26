@@ -8,12 +8,12 @@ interface BrandLogoProps {
 }
 
 /**
- * Resilient KHELV PENEL brand crest with bundled asset primary source
+ * Resilient KHELV GAME PENEL brand crest with bundled asset primary source
  * and inline metallic SVG fallback so no broken image frame can ever appear.
  */
 export const BrandLogo: React.FC<BrandLogoProps> = ({
   src = PANDA_LOGO_URL,
-  alt = 'KHELV PENEL',
+  alt = 'KHELV GAME PENEL',
   className = 'w-11 h-11 rounded-xl',
 }) => {
   const [imgFailed, setImgFailed] = useState(false);
@@ -42,15 +42,27 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
           />
           <text
             x="32"
-            y="45"
+            y="43"
             textAnchor="middle"
             fill="#e0f2fe"
-            fontSize="10"
+            fontSize="8.5"
             fontWeight="900"
             fontFamily="monospace"
-            letterSpacing="1"
+            letterSpacing="0.8"
           >
             KHELV
+          </text>
+          <text
+            x="32"
+            y="51"
+            textAnchor="middle"
+            fill="#7dd3fc"
+            fontSize="6.2"
+            fontWeight="800"
+            fontFamily="monospace"
+            letterSpacing="0.5"
+          >
+            GAME PENEL
           </text>
         </svg>
       </div>

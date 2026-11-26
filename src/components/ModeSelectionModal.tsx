@@ -84,13 +84,13 @@ export const ModeSelectionModal: React.FC<ModeSelectionModalProps> = ({
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-slate-800 pb-3 mb-4">
           <BrandLogo
-            alt="KHELV PENEL Logo"
+            alt="KHELV GAME PENEL Logo"
             className="w-11 h-11 rounded-xl border border-sky-500/50 shadow-[0_0_15px_rgba(14,165,233,0.4)]"
           />
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-black tracking-wider text-white">
-                KHELV PENEL
+                KHELV GAME PENEL
               </h2>
               <span className="text-[10px] px-2 py-0.5 rounded bg-sky-950 text-sky-300 font-mono font-bold border border-sky-500/40">
                 500+ BACKTEST

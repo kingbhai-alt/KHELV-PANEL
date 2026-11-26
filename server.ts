@@ -714,7 +714,7 @@ async function startServer() {
         actualSize: actualSize ? String(actualSize) : null,
         outcome: String(outcome || 'PENDING'),
         level: Number(level) || 1,
-        winningStrategy: String(winningStrategy || 'KHELV 500-Round Backtest'),
+        winningStrategy: String(winningStrategy || 'KHELV GAME PENEL 500-Round Backtest'),
         backtestAccuracy: Number(backtestAccuracy) || 0,
       });
 
@@ -795,7 +795,7 @@ async function startServer() {
   app.get('/api/health', (req, res) => {
     res.json({
       status: 'ok',
-      service: 'KHELV PENEL',
+      service: 'KHELV GAME PENEL',
       registeredKeys: licenseDb.size / 2,
       time: new Date().toISOString(),
     });
@@ -816,7 +816,7 @@ async function startServer() {
   }
 
   app.listen(Number(PORT), '0.0.0.0', () => {
-    console.log(`JUJUTSU SCRIPT PREDICTOR running on http://0.0.0.0:${PORT}`);
+    console.log(`KHELV GAME PENEL running on http://0.0.0.0:${PORT}`);
     console.log(`Active 2K+ Cluster Nodes: 2048 | Master Cipher Ready`);
   });
 }

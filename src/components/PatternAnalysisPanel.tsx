@@ -269,7 +269,7 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
             <h3 className="font-black text-sm text-white tracking-wider">
-              KHELV PENEL • 500+ BACKTEST & HEATMAP
+              KHELV GAME PENEL • 500+ BACKTEST & HEATMAP
             </h3>
           </div>
           <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 font-mono font-bold border border-emerald-500/40">
@@ -277,7 +277,7 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
           </span>
         </div>
         <p className="text-[11px] text-slate-400 leading-tight">
-          Visualizing the last 50 game outcomes via D3.js trend matrix, streak frequencies, and AJAY 1000K+ bypass consensus voting across 170,000 pure real calculations (10 to 1,000 historical results).
+          Visualizing the last 50 game outcomes via D3.js trend matrix, streak frequencies, and KHELV GAME PENEL 1000K+ consensus voting across 170,000 pure real calculations (10 to 1,000 historical results).
         </p>
 
         {/* 4 Stat Pills */}
@@ -547,7 +547,7 @@ export const PatternAnalysisPanel: React.FC<PatternAnalysisPanelProps> = ({
         </div>
       </div>
 
-      {/* 4. AJAY 1000K+ BYPASS MULTI-MARKET VOTING CONSENSUS MATRIX */}
+      {/* 4. KHELV GAME PENEL 1000K+ MULTI-MARKET VOTING CONSENSUS MATRIX */}
       <div className="rounded-2xl bg-[#0e0f1f] border border-slate-800 p-3 shadow-lg">
         <div className="flex items-center justify-between mb-2">
           <div className="font-extrabold text-xs text-[#f59e0b] flex items-center gap-1.5">

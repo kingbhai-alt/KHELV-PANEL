@@ -64,7 +64,7 @@ export const KeyGateModal: React.FC<KeyGateModalProps> = ({
     const result = await verifyLicenseKey(clean);
 
     if (result.valid && result.session) {
-      setStatusStep('ACCESS GRANTED • Initializing KHELV PENEL...');
+      setStatusStep('ACCESS GRANTED • Initializing KHELV GAME PENEL...');
       sfx.win();
       setTimeout(() => {
         onUnlocked(result.session!);
@@ -87,16 +87,16 @@ export const KeyGateModal: React.FC<KeyGateModalProps> = ({
       <div className="relative w-full max-w-lg my-auto rounded-3xl backdrop-blur-3xl bg-slate-900/95 border border-sky-500/40 shadow-[0_0_60px_rgba(14,165,233,0.25)] p-5 sm:p-7 text-slate-100 overflow-hidden">
         <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-blue-600 via-sky-400 to-blue-600" />
 
-        {/* Clean Header with KHELV PENEL Logo */}
+        {/* Clean Header with KHELV GAME PENEL Logo */}
         <div className="flex items-center gap-3.5 border-b border-slate-800 pb-4 mb-4">
           <BrandLogo
-            alt="KHELV PENEL Logo"
+            alt="KHELV GAME PENEL Logo"
             className="w-14 h-14 rounded-2xl border border-sky-500/60 shadow-[0_0_20px_rgba(14,165,233,0.45)]"
           />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <h2 className="text-lg sm:text-xl font-black tracking-wider text-white truncate">
-                KHELV PENEL
+                KHELV GAME PENEL
               </h2>
               <span className="text-[10px] px-2 py-0.5 rounded bg-sky-950 text-sky-300 font-mono font-bold border border-sky-500/40 shrink-0">
                 VIP PRO
@@ -164,7 +164,7 @@ export const KeyGateModal: React.FC<KeyGateModalProps> = ({
             disabled={isLoading}
             className="w-full py-3.5 rounded-xl bg-gradient-to-r from-blue-600 via-sky-500 to-blue-600 hover:from-blue-500 hover:via-sky-400 hover:to-blue-500 text-white font-black text-sm uppercase tracking-wider shadow-[0_0_25px_rgba(14,165,233,0.45)] transition-all cursor-pointer disabled:opacity-50"
           >
-            {isLoading ? 'Verifying License...' : 'Unlock KHELV PENEL'}
+            {isLoading ? 'Verifying License...' : 'Unlock KHELV GAME PENEL'}
           </button>
         </form>
 
