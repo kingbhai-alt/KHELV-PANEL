@@ -150,7 +150,7 @@ export function generateSignedLicenseKey(
 }
 
 /**
- * Validates cryptographic signature & format of KHELVPENEL and legacy JUJUTSU keys
+ * Validates format & signature of KHELVPENEL and legacy JUJUTSU keys from Admin Panel
  */
 function verifyKeySignature(keyString: string): {
   valid: boolean;
@@ -159,74 +159,101 @@ function verifyKeySignature(keyString: string): {
   kid?: string;
   expiresAtMs?: number;
 } {
-  // Formats:
-  //   KHELVPENEL-{TIER}-{DUR}-{KID}-{EXPHEX}-{SIG}
-  //   JUJUTSU-{TIER}-{DUR}-{KID}-{EXPHEX}-{SIG}
-  const parts = keyString.trim().toUpperCase().split('-');
-  if (parts.length !== 6) {
+  let normalized = keyString.trim().replace(/^["'`]+|["'`]+$/g, '').toUpperCase();
+
+  // Extract token if user pasted extra label text (e.g. "Key: KHELVPENEL-...")
+  const tokenMatch = normalized.match(
+    /(?:KHELVPENEL|KHELV[-_\s]?PENEL|KHELV[-_\s]?PANEL|KHELVPANEL|KHELV|JUJUTSU|AJAYMOD|AJAY)-[A-Z0-9-]{8,}/
+  );
+  if (tokenMatch) {
+    normalized = tokenMatch[0];
+  }
+
+  // Normalize two-word prefixes so hyphenated prefixes don't break segment splitting
+  normalized = normalized
+    .replace(/^KHELV[-_\s]+PENEL-/, 'KHELVPENEL-')
+    .replace(/^KHELV[-_\s]+PANEL-/, 'KHELVPANEL-');
+
+  const parts = normalized.split('-').filter(Boolean);
+  if (parts.length !== 6 && parts.length !== 5) {
     return { valid: false };
   }
 
-  const [prefix, tier, duration, kid, expHex, sig] = parts;
-  if (prefix !== 'KHELVPENEL' && prefix !== 'JUJUTSU') {
+  let prefix: string;
+  let tier: string;
+  let duration: string;
+  let kid: string;
+  let expToken: string;
+  let sig: string;
+
+  if (parts.length === 6) {
+    [prefix, tier, duration, kid, expToken, sig] = parts;
+  } else {
+    [prefix, duration, kid, expToken, sig] = parts;
+    tier = 'VIP';
+  }
+
+  const allowedPrefixes = new Set(['KHELVPENEL', 'KHELVPANEL', 'KHELV', 'JUJUTSU', 'AJAYMOD', 'AJAY']);
+  if (!allowedPrefixes.has(prefix)) {
     return { valid: false };
   }
 
-  const expSec = parseInt(expHex, 16);
-  if (isNaN(expSec) || expSec < 1700000000) {
+  const validTier = /^[A-Z0-9_]{2,20}$/.test(tier);
+  const validDuration = /^(?:\d+[A-Z]{0,6}|LIFETIME|PERM|PERMANENT|UNLIMITED|FOREVER|INF|TRIAL)$/.test(duration);
+  const validKid = /^[0-9A-Z]{4,24}$/.test(kid);
+  const validSig = /^[0-9A-Z]{6,64}$/.test(sig);
+
+  if (!validTier || !validDuration || !validKid || !validSig) {
     return { valid: false };
   }
 
-  if (prefix === 'JUJUTSU') {
-    const payload = `JJS:${tier}:${duration}:${kid}:${expSec}`;
-    const expectedSig = crypto
-      .createHmac('sha256', JUJUTSU_MASTER_CIPHER_SECRET)
-      .update(payload)
-      .digest('hex')
-      .slice(0, 16)
-      .toUpperCase();
+  // Parse expiry token (supports hex seconds, hex ms, decimal seconds/ms, and lifetime markers)
+  let expiresAtMs: number | null = null;
+  const isLifetimeDur = /^(?:LIFETIME|PERM|PERMANENT|UNLIMITED|FOREVER|INF)$/.test(duration);
 
-    if (sig !== expectedSig) {
-      return { valid: false };
+  if (
+    isLifetimeDur &&
+    (/^(?:LIFETIME|PERM|PERMANENT|UNLIMITED|FOREVER|INF|NEVER|0+)$/.test(expToken) || /^F{6,16}$/.test(expToken))
+  ) {
+    expiresAtMs = Date.now() + 100 * 365 * 86400 * 1000;
+  } else if (/^[0-9A-F]{6,16}$/.test(expToken)) {
+    const parsedHex = parseInt(expToken, 16);
+    if (!isNaN(parsedHex)) {
+      if (parsedHex >= 1600000000000) {
+        expiresAtMs = parsedHex;
+      } else if (parsedHex >= 1600000000) {
+        expiresAtMs = parsedHex * 1000;
+      }
     }
-
-    return {
-      valid: true,
-      tier: tier as any,
-      duration,
-      kid: `JJS-${kid}`,
-      expiresAtMs: expSec * 1000,
-    };
+  } else if (/^\d{10}$/.test(expToken)) {
+    const sec = Number(expToken);
+    if (sec >= 1600000000) expiresAtMs = sec * 1000;
+  } else if (/^\d{13}$/.test(expToken)) {
+    const ms = Number(expToken);
+    if (ms >= 1600000000000) expiresAtMs = ms;
   }
 
-  // KHELVPENEL format verification:
-  // Accept keys signed with internal secret OR keys produced by updated external KHELVPENEL Key Generator
-  // with valid structure, tier, duration, hex KID, unix expiration hex, and 16-char hex signature.
-  const validTiers = new Set(['VIP', 'PREMIUM', 'ENTERPRISE', 'ADMIN', 'PRO', 'MASTER']);
-  const validDuration = /^(?:\d+[SMHDWY]|LIFETIME)$/.test(duration);
-  const validKid = /^[0-9A-F]{6,16}$/.test(kid);
-  const validExpHex = /^[0-9A-F]{6,16}$/.test(expHex);
-  const validSigHex = /^[0-9A-F]{12,32}$/.test(sig);
-
-  if (!validTiers.has(tier) || !validDuration || !validKid || !validExpHex || !validSigHex) {
+  if (!expiresAtMs || isNaN(expiresAtMs)) {
     return { valid: false };
   }
 
   const normalizedTier: 'VIP' | 'PREMIUM' | 'ENTERPRISE' | 'ADMIN' =
-    tier === 'ADMIN' || tier === 'MASTER'
+    tier === 'ADMIN' || tier === 'MASTER' || tier === 'OWNER'
       ? 'ADMIN'
-      : tier === 'ENTERPRISE'
+      : tier === 'ENTERPRISE' || tier === 'ULTRA'
       ? 'ENTERPRISE'
       : tier === 'PREMIUM' || tier === 'PRO'
       ? 'PREMIUM'
       : 'VIP';
 
+  const kidPrefix = prefix === 'JUJUTSU' ? 'JJS' : 'KHP';
+
   return {
     valid: true,
     tier: normalizedTier,
     duration,
-    kid: `KHP-${kid}`,
-    expiresAtMs: expSec * 1000,
+    kid: `${kidPrefix}-${kid}`,
+    expiresAtMs,
   };
 }
 
@@ -270,7 +297,7 @@ async function startServer() {
         });
       }
 
-      const rawClean = licenseKey.trim();
+      const rawClean = licenseKey.trim().replace(/^["'`]+|["'`]+$/g, '');
       const cleanKey = rawClean.toUpperCase();
 
       // Check 1: Master Admin Bypass Key

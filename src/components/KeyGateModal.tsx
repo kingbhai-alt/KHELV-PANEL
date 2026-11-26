@@ -42,7 +42,13 @@ export const KeyGateModal: React.FC<KeyGateModalProps> = ({
 
   const handleAuthenticate = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const clean = keyInput.trim();
+    let clean = keyInput.trim().replace(/^["'`]+|["'`]+$/g, '');
+    const extracted = clean.match(
+      /(?:KHELVPENEL|KHELV[-_\s]?PENEL|KHELV[-_\s]?PANEL|KHELVPANEL|KHELV|JUJUTSU|AJAYMOD|AJAY)-[A-Z0-9-]{8,}/i
+    );
+    if (extracted) {
+      clean = extracted[0].toUpperCase();
+    }
     if (!clean) {
       setErrorMsg('Please paste or type your encrypted license key.');
       sfx.error();
