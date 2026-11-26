@@ -42,13 +42,7 @@ export const KeyGateModal: React.FC<KeyGateModalProps> = ({
 
   const handleAuthenticate = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    let clean = keyInput.trim().replace(/^["'`]+|["'`]+$/g, '');
-    const extracted = clean.match(
-      /(?:KHELVPENEL|KHELV[-_\s]?PENEL|KHELV[-_\s]?PANEL|KHELVPANEL|KHELV|JUJUTSU|AJAYMOD|AJAY)-[A-Z0-9-]{8,}/i
-    );
-    if (extracted) {
-      clean = extracted[0].toUpperCase();
-    }
+    const clean = keyInput.trim();
     if (!clean) {
       setErrorMsg('Please paste or type your encrypted license key.');
       sfx.error();
@@ -160,7 +154,7 @@ export const KeyGateModal: React.FC<KeyGateModalProps> = ({
               type="text"
               value={keyInput}
               onChange={(e) => setKeyInput(e.target.value)}
-              placeholder="KHELVPENEL-VIP-7D-XXXXXXXX-XXXX..."
+              placeholder="JUJUTSU-VIP-7D-XXXXXXXX-XXXX..."
               disabled={isLoading}
               className="w-full bg-[var(--kp-surface)] border border-[var(--kp-border)] focus:border-[var(--kp-accent)] focus:outline-none rounded-xl px-4 py-3 text-sm font-mono text-[var(--kp-text)] placeholder:text-[var(--kp-muted)]/60 transition-all uppercase tracking-wider"
             />

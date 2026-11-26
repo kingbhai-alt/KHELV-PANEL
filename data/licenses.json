@@ -80,33 +80,5 @@
     "lastSeenAt": 1791981634017,
     "isRevoked": false,
     "boundDeviceLabel": "Android Mobile (Mobile) - Chrome"
-  },
-  {
-    "keyId": "KHP-EAFDBC2C",
-    "licenseKey": "KHELVPENEL-VIP-1H-EAFDBC2C-6B0784A8-1B86440E59E26AA4",
-    "tier": "VIP",
-    "duration": "1H",
-    "durationSeconds": 2372,
-    "createdAt": 1795652451901,
-    "expiresAt": 1795654824000,
-    "boundDeviceId": "DRY-RUN-CHECK",
-    "firstActivatedAt": 1795652451901,
-    "lastSeenAt": 1795652451901,
-    "isRevoked": false,
-    "boundDeviceLabel": "DryCheck"
-  },
-  {
-    "keyId": "KHP-F6705D4D",
-    "licenseKey": "KHELVPENEL-ADMIN-LIFETIME-F6705D4D-126FF97E1-21E1AFAB324E19A1",
-    "tier": "ADMIN",
-    "duration": "LIFETIME",
-    "durationSeconds": 3153599591,
-    "createdAt": 1795652473798,
-    "expiresAt": 4949252065000,
-    "boundDeviceId": "DEV-BBED-4568-7975-5719",
-    "firstActivatedAt": 1795652473798,
-    "lastSeenAt": 1795652473798,
-    "isRevoked": false,
-    "boundDeviceLabel": "Windows PC (Desktop) - Chrome"
   }
 ]
