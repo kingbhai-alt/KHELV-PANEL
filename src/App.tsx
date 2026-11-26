@@ -34,14 +34,9 @@ import {
   saveBacktestReportToDatabase,
   StoredPredictionLog,
 } from './services/dbService';
-import { useAuth } from './context/AuthContext';
 
 export default function App() {
-  const { idToken } = useAuth();
-  const idTokenRef = useRef<string | null>(idToken);
-  useEffect(() => {
-    idTokenRef.current = idToken;
-  }, [idToken]);
+  const idTokenRef = useRef<string | null>(null);
 
   // 🔐 1. Key authentication required every single time app opens/reloads
   const [licenseSession, setLicenseSession] = useState<LicenseSession | null>(null);

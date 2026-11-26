@@ -13,7 +13,6 @@ import { PatternAnalysisPanel } from './PatternAnalysisPanel';
 import { ClusterVote, UserCalculationDetail } from '../logic/jujutsuEngine';
 import { BacktestSummary } from '../logic/backtestEngine';
 import { BrandLogo } from './BrandLogo';
-import { useAuth } from '../context/AuthContext';
 
 interface JujutsuTerminalProps {
   stats: LotteryStats;
@@ -64,7 +63,6 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
   onResetTargetRun,
   isTargetLocked = false,
 }) => {
-  const { user, signInWithGoogle, signOutGoogle } = useAuth();
   const [activeTab, setActiveTab] = useState<'hack' | 'pattern' | 'my'>('hack');
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [showModeDropdown, setShowModeDropdown] = useState(false);
@@ -796,29 +794,8 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
           <div className="rounded-2xl bg-[#0e0f1f] border border-slate-800 p-3.5 shadow-xl">
             <div className="flex items-center justify-between mb-2">
               <h4 className="font-bold text-white text-xs">KHELV PENEL ACCOUNT & DEVICE</h4>
-              {user ? (
-                <button
-                  onClick={signOutGoogle}
-                  className="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
-                >
-                  Sign Out Google
-                </button>
-              ) : (
-                <button
-                  onClick={signInWithGoogle}
-                  className="text-[10px] px-2.5 py-0.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-bold cursor-pointer"
-                >
-                  Sign in with Google
-                </button>
-              )}
             </div>
             <div className="text-xs font-mono space-y-1.5 text-slate-300 tabular-nums">
-              {user && (
-                <div>
-                  <span className="text-slate-500">Google Account: </span>
-                  <span className="text-sky-300 font-bold">{user.email}</span>
-                </div>
-              )}
               <div>
                 <span className="text-slate-500">Tier: </span>
                 <span className="text-amber-400 font-bold">{licenseSession?.tier || 'VIP'}</span>
