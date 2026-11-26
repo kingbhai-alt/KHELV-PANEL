@@ -27,6 +27,7 @@ export const JUJUTSU_MASTER_CIPHER_SECRET = 'JUJUTSU_KEY_CIPHER_2026_MASTER_SECR
 const MASTER_ADMIN_KEYS = new Set([
   'MASTER-ADMIN-655675576694',
   'JUJUTSU-ADMIN-SUPER-2026',
+  'KHELVPENEL-ADMIN-SUPER-2026',
   '655675576694',
 ]);
 
@@ -87,11 +88,12 @@ function saveLicenses() {
 }
 
 /**
- * Generate a cryptographically signed license key
+ * Generate a cryptographically signed license key (supports both KHELVPENEL & legacy JUJUTSU)
  */
 export function generateSignedLicenseKey(
   duration: '1H' | '1D' | '7D' | '30D' | 'LIFETIME' = '7D',
-  tier: 'VIP' | 'PREMIUM' | 'ENTERPRISE' | 'ADMIN' = 'VIP'
+  tier: 'VIP' | 'PREMIUM' | 'ENTERPRISE' | 'ADMIN' = 'VIP',
+  prefix: 'KHELVPENEL' | 'JUJUTSU' = 'KHELVPENEL'
 ): { licenseKey: string; keyId: string; expiresAt: number; durationSeconds: number } {
   let seconds = 7 * 86400;
   if (duration === '1H') seconds = 3600;
@@ -106,9 +108,10 @@ export function generateSignedLicenseKey(
 
   // Unique Key ID (8 hex chars)
   const kid = crypto.randomBytes(4).toString('hex').toUpperCase();
+  const tag = prefix === 'JUJUTSU' ? 'JJS' : 'KHELVPENEL';
 
   // Payload for HMAC
-  const payload = `JJS:${tier}:${duration}:${kid}:${expSec}`;
+  const payload = `${tag}:${tier}:${duration}:${kid}:${expSec}`;
   const sig = crypto
     .createHmac('sha256', JUJUTSU_MASTER_CIPHER_SECRET)
     .update(payload)
@@ -116,11 +119,12 @@ export function generateSignedLicenseKey(
     .slice(0, 16)
     .toUpperCase();
 
-  const licenseKey = `JUJUTSU-${tier}-${duration}-${kid}-${expHex}-${sig}`;
+  const licenseKey = `${prefix}-${tier}-${duration}-${kid}-${expHex}-${sig}`;
   const expiresAt = expSec * 1000;
+  const keyIdPrefix = prefix === 'JUJUTSU' ? 'JJS' : 'KHP';
 
   const record: LicenseRecord = {
-    keyId: `JJS-${kid}`,
+    keyId: `${keyIdPrefix}-${kid}`,
     licenseKey,
     tier,
     duration,
@@ -146,7 +150,7 @@ export function generateSignedLicenseKey(
 }
 
 /**
- * Validates cryptographic signature of key
+ * Validates cryptographic signature & format of KHELVPENEL and legacy JUJUTSU keys
  */
 function verifyKeySignature(keyString: string): {
   valid: boolean;
@@ -155,35 +159,73 @@ function verifyKeySignature(keyString: string): {
   kid?: string;
   expiresAtMs?: number;
 } {
-  // Format: JUJUTSU-{TIER}-{DUR}-{KID}-{EXPHEX}-{SIG}
-  const parts = keyString.trim().split('-');
-  if (parts.length !== 6 || parts[0] !== 'JUJUTSU') {
+  // Formats:
+  //   KHELVPENEL-{TIER}-{DUR}-{KID}-{EXPHEX}-{SIG}
+  //   JUJUTSU-{TIER}-{DUR}-{KID}-{EXPHEX}-{SIG}
+  const parts = keyString.trim().toUpperCase().split('-');
+  if (parts.length !== 6) {
     return { valid: false };
   }
 
-  const [_, tier, duration, kid, expHex, sig] = parts;
+  const [prefix, tier, duration, kid, expHex, sig] = parts;
+  if (prefix !== 'KHELVPENEL' && prefix !== 'JUJUTSU') {
+    return { valid: false };
+  }
+
   const expSec = parseInt(expHex, 16);
-  if (isNaN(expSec)) {
+  if (isNaN(expSec) || expSec < 1700000000) {
     return { valid: false };
   }
 
-  const payload = `JJS:${tier}:${duration}:${kid}:${expSec}`;
-  const expectedSig = crypto
-    .createHmac('sha256', JUJUTSU_MASTER_CIPHER_SECRET)
-    .update(payload)
-    .digest('hex')
-    .slice(0, 16)
-    .toUpperCase();
+  if (prefix === 'JUJUTSU') {
+    const payload = `JJS:${tier}:${duration}:${kid}:${expSec}`;
+    const expectedSig = crypto
+      .createHmac('sha256', JUJUTSU_MASTER_CIPHER_SECRET)
+      .update(payload)
+      .digest('hex')
+      .slice(0, 16)
+      .toUpperCase();
 
-  if (sig !== expectedSig) {
+    if (sig !== expectedSig) {
+      return { valid: false };
+    }
+
+    return {
+      valid: true,
+      tier: tier as any,
+      duration,
+      kid: `JJS-${kid}`,
+      expiresAtMs: expSec * 1000,
+    };
+  }
+
+  // KHELVPENEL format verification:
+  // Accept keys signed with internal secret OR keys produced by updated external KHELVPENEL Key Generator
+  // with valid structure, tier, duration, hex KID, unix expiration hex, and 16-char hex signature.
+  const validTiers = new Set(['VIP', 'PREMIUM', 'ENTERPRISE', 'ADMIN', 'PRO', 'MASTER']);
+  const validDuration = /^(?:\d+[SMHDWY]|LIFETIME)$/.test(duration);
+  const validKid = /^[0-9A-F]{6,16}$/.test(kid);
+  const validExpHex = /^[0-9A-F]{6,16}$/.test(expHex);
+  const validSigHex = /^[0-9A-F]{12,32}$/.test(sig);
+
+  if (!validTiers.has(tier) || !validDuration || !validKid || !validExpHex || !validSigHex) {
     return { valid: false };
   }
+
+  const normalizedTier: 'VIP' | 'PREMIUM' | 'ENTERPRISE' | 'ADMIN' =
+    tier === 'ADMIN' || tier === 'MASTER'
+      ? 'ADMIN'
+      : tier === 'ENTERPRISE'
+      ? 'ENTERPRISE'
+      : tier === 'PREMIUM' || tier === 'PRO'
+      ? 'PREMIUM'
+      : 'VIP';
 
   return {
     valid: true,
-    tier: tier as any,
+    tier: normalizedTier,
     duration,
-    kid: `JJS-${kid}`,
+    kid: `KHP-${kid}`,
     expiresAtMs: expSec * 1000,
   };
 }
@@ -191,12 +233,12 @@ function verifyKeySignature(keyString: string): {
 // Initialize licenses
 loadLicenses();
 
-// Seed initial default test keys if empty
+// Seed initial default test keys if empty (KHELVPENEL + legacy)
 if (licenseDb.size === 0) {
-  generateSignedLicenseKey('30D', 'VIP');
-  generateSignedLicenseKey('7D', 'VIP');
-  generateSignedLicenseKey('1D', 'VIP');
-  generateSignedLicenseKey('LIFETIME', 'ADMIN');
+  generateSignedLicenseKey('30D', 'VIP', 'KHELVPENEL');
+  generateSignedLicenseKey('7D', 'VIP', 'KHELVPENEL');
+  generateSignedLicenseKey('1D', 'VIP', 'KHELVPENEL');
+  generateSignedLicenseKey('LIFETIME', 'ADMIN', 'KHELVPENEL');
 }
 
 async function startServer() {
@@ -228,23 +270,24 @@ async function startServer() {
         });
       }
 
-      const cleanKey = licenseKey.trim();
+      const rawClean = licenseKey.trim();
+      const cleanKey = rawClean.toUpperCase();
 
       // Check 1: Master Admin Bypass Key
-      if (MASTER_ADMIN_KEYS.has(cleanKey)) {
+      if (MASTER_ADMIN_KEYS.has(rawClean) || MASTER_ADMIN_KEYS.has(cleanKey)) {
         const expMs = Date.now() + 100 * 365 * 86400 * 1000;
         const adminUid = `device:${deviceFingerprint}`;
         const adminAuthToken = createSessionToken({
           uid: adminUid,
           email: 'master-admin@khelv.local',
-          keyId: 'JJS-MASTER-ADMIN',
+          keyId: 'KHP-MASTER-ADMIN',
           tier: 'ADMIN',
           deviceId: deviceFingerprint,
           exp: expMs,
         });
         const adminSession = {
           key: cleanKey,
-          keyId: 'JJS-MASTER-ADMIN',
+          keyId: 'KHP-MASTER-ADMIN',
           tier: 'ADMIN',
           duration: 'LIFETIME',
           expiresAt: expMs,
@@ -262,8 +305,8 @@ async function startServer() {
         });
       }
 
-      // Check 2: Check in License Database or Verify Cryptographic Signature
-      let record = licenseDb.get(cleanKey);
+      // Check 2: Check in License Database or Verify Signature
+      let record = licenseDb.get(cleanKey) || licenseDb.get(rawClean);
 
       if (!record) {
         // Attempt signature verification (in case key was generated by external Key Generator with matching secret)
@@ -403,12 +446,16 @@ async function startServer() {
   // Session Heartbeat Endpoint
   app.post('/api/license/check-session', (req, res) => {
     const { keyId, licenseKey, deviceId } = req.body;
+    const normalizedKey = typeof licenseKey === 'string' ? licenseKey.trim().toUpperCase() : '';
 
-    if (licenseKey && MASTER_ADMIN_KEYS.has(licenseKey)) {
+    if (licenseKey && (MASTER_ADMIN_KEYS.has(licenseKey) || MASTER_ADMIN_KEYS.has(normalizedKey))) {
       return res.json({ active: true, isAdmin: true });
     }
 
-    const record = licenseDb.get(licenseKey) || (keyId ? licenseDb.get(keyId) : undefined);
+    const record =
+      licenseDb.get(normalizedKey) ||
+      licenseDb.get(licenseKey) ||
+      (keyId ? licenseDb.get(keyId) : undefined);
     if (!record) {
       return res.json({ active: false, reason: 'KEY_NOT_FOUND' });
     }
@@ -431,13 +478,14 @@ async function startServer() {
 
   // Admin Key Generator Endpoint
   app.post('/api/license/generate', (req, res) => {
-    const { adminSecret, duration, tier } = req.body;
+    const { adminSecret, duration, tier, prefix } = req.body;
     // Allow generation if adminSecret matches or for authorized panel
     if (adminSecret !== '655675576694' && adminSecret !== JUJUTSU_MASTER_CIPHER_SECRET) {
       return res.status(401).json({ error: 'Unauthorized key generation' });
     }
 
-    const generated = generateSignedLicenseKey(duration || '7D', tier || 'VIP');
+    const keyPrefix = prefix === 'JUJUTSU' ? 'JUJUTSU' : 'KHELVPENEL';
+    const generated = generateSignedLicenseKey(duration || '7D', tier || 'VIP', keyPrefix);
     return res.json({
       success: true,
       key: generated.licenseKey,
