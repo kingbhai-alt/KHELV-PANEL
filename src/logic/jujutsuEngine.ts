@@ -800,27 +800,6 @@ export function jujutsu_high_winning_predictor(
   }
 
   // ==========================================================
-  // CLUSTER 12: AI Self-Learning Meta-Ensemble (204,800 Nodes Weight)
-  // ==========================================================
-  {
-    const metaStat = backtestSummary.strategyRankings.find(
-      (s) => s.id === 'SELF_LEARNED_META_LEARNER'
-    );
-    const metaVote =
-      currentLevel >= 2
-        ? backtestSummary.recommendedSizeForLevel
-        : metaStat?.nextVote || backtestSummary.recommendedSizeForLevel;
-    votes.push({
-      clusterName: 'KHELV GAME PENEL Cluster #Lambda [AI Self-Learning Meta-Ensemble]',
-      nodeCount: 204800,
-      voteSize: metaVote,
-      voteNumbers: getDynamicPair(metaVote, 10),
-      confidence: Math.max(97, backtestSummary.ensembleUnder3FixRate),
-      strategy: `Self-Learned Top-5 + 4-Gram Ensemble (${metaStat?.level1Accuracy ?? backtestSummary.ensembleLevel1Accuracy}% L1 | ${backtestSummary.ensembleUnder3FixRate}% U3)`,
-    });
-  }
-
-  // ==========================================================
   // 🗳️ MULTI-CLUSTER DEMOCRATIC CONSENSUS TALLYING (1,024,000+ NODES)
   // ==========================================================
   let weightedBigVotes = 0;
@@ -833,26 +812,19 @@ export function jujutsu_high_winning_predictor(
 
   for (const vote of votes) {
     const isFixWinCluster = vote.clusterName.includes('Fix-Win Engine');
-    const isBacktestChampion =
-      vote.clusterName.includes('Champion [') ||
-      vote.clusterName.includes('Backtest Champion');
-    const isMetaEnsemble = vote.clusterName.includes('Self-Learning Meta-Ensemble');
+    const isBacktestChampion = vote.clusterName.includes('Backtest Champion');
     const isUserRootCluster = vote.clusterName.includes('User Digital Root Master');
     const is170kCluster = vote.clusterName.includes('170K Pure Real');
 
     let multiplier = 1.0;
-    if (currentLevel >= 3 && (isFixWinCluster || isBacktestChampion || isMetaEnsemble)) {
-      multiplier = isBacktestChampion ? 30.0 : isFixWinCluster ? 25.0 : 20.0; // Absolute decisive lock for Level 3 Fix-Win Protocol
-    } else if (currentLevel === 2 && (isFixWinCluster || isBacktestChampion || isMetaEnsemble)) {
-      multiplier = isBacktestChampion ? 15.0 : isFixWinCluster ? 15.0 : 12.0; // Strong decisive weight for Level 2 Anti-Loss
+    if (currentLevel >= 3 && (isFixWinCluster || isBacktestChampion)) {
+      multiplier = isBacktestChampion ? 30.0 : 25.0; // Absolute decisive lock for Level 3 Fix-Win Protocol
+    } else if (currentLevel === 2 && (isFixWinCluster || isBacktestChampion)) {
+      multiplier = isBacktestChampion ? 15.0 : 10.0; // Strong decisive weight for Level 2 Anti-Loss
     } else if (isBacktestChampion) {
-      multiplier = 6.0;
-    } else if (isMetaEnsemble) {
-      multiplier = 5.0;
-    } else if (isFixWinCluster) {
       multiplier = 4.0;
     } else if (isUserRootCluster || is170kCluster) {
-      multiplier = 2.0;
+      multiplier = 2.5;
     }
 
     const weight =

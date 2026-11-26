@@ -23,6 +23,7 @@ import { BacktestSummary } from './logic/backtestEngine';
 import {
   clearSession,
   checkSessionHeartbeat,
+  getMemoryAuthToken,
   LicenseSession,
 } from './services/licenseService';
 import {
@@ -33,12 +34,6 @@ import {
   saveBacktestReportToDatabase,
   StoredPredictionLog,
 } from './services/dbService';
-import {
-  AiInsightState,
-  fetchAiMemory,
-  requestLiveAiPrediction,
-  sendAiLearningOutcome,
-} from './services/aiService';
 
 export default function App() {
   const idTokenRef = useRef<string | null>(null);
@@ -74,13 +69,6 @@ export default function App() {
   const [userCalcDetail, setUserCalcDetail] = useState<UserCalculationDetail | undefined>(undefined);
   const [backtestSummary, setBacktestSummary] = useState<BacktestSummary | undefined>(undefined);
   const [previousWasLoss, setPreviousWasLoss] = useState<boolean>(false);
-  const [aiEcoMode, setAiEcoMode] = useState<boolean>(true);
-  const aiEcoModeRef = useRef<boolean>(true);
-  const [aiInsight, setAiInsight] = useState<AiInsightState>({
-    status: 'IDLE',
-    ecoMode: true,
-    quotaSavedCount: 0,
-  });
 
   const [currentPrediction, setCurrentPrediction] = useState<{
     period: string;
@@ -135,8 +123,6 @@ export default function App() {
         conf: number;
         rule: string;
         lossLevel: number;
-        aiPred?: PredictionResult;
-        recentSizesBefore?: PredictionResult[];
       }
     >
   >(new Map());
@@ -149,8 +135,6 @@ export default function App() {
     conf: number;
     rule: string;
     lossLevel: number;
-    aiPred?: PredictionResult;
-    recentSizesBefore?: PredictionResult[];
   } | null>(null);
 
   // Auto delete history and session on back / close / reload
@@ -204,22 +188,6 @@ export default function App() {
     setSelectedMode(null);
     setHistory([]);
     setKeyGateError('');
-    setAiInsight((prev) => ({
-      status: 'IDLE',
-      memory: prev.memory,
-      providers: prev.providers,
-      configuredCount: prev.configuredCount,
-      geminiConfigured: prev.geminiConfigured,
-      ecoMode: aiEcoModeRef.current,
-      quotaSavedCount: prev.quotaSavedCount || 0,
-    }));
-  };
-
-  const handleToggleAiEcoMode = () => {
-    const next = !aiEcoModeRef.current;
-    aiEcoModeRef.current = next;
-    setAiEcoMode(next);
-    setAiInsight((prev) => ({ ...prev, ecoMode: next }));
   };
 
   // When user switches mode, clear history and fetch ONLY that mode's live data
@@ -232,16 +200,6 @@ export default function App() {
     lastProcessedIssueRef.current = '';
     lastPredictedIssueRef.current = '';
     predictionHistoryMap.current.clear();
-    lastActivePredictionRef.current = null;
-    setAiInsight((prev) => ({
-      status: 'IDLE',
-      memory: prev.memory,
-      providers: prev.providers,
-      configuredCount: prev.configuredCount,
-      geminiConfigured: prev.geminiConfigured,
-      ecoMode: aiEcoModeRef.current,
-      quotaSavedCount: prev.quotaSavedCount || 0,
-    }));
     setStats({
       wins: 0,
       jackpots: 0,
@@ -320,29 +278,12 @@ export default function App() {
     let isMounted = true;
     let pollTimeout: any = null;
     let dbDrawsLoadedOnce = false;
-    let aiMemoryLoadedOnce = false;
     let cachedDbDraws: DrawItem[] = [];
     let cachedDbPredictions: StoredPredictionLog[] = [];
 
     const processLotteryRound = async () => {
       try {
-        const token = idTokenRef.current;
-
-        if (!aiMemoryLoadedOnce) {
-          aiMemoryLoadedOnce = true;
-          fetchAiMemory(licenseSession)
-            .then((res) => {
-              if (!isMounted) return;
-              setAiInsight((prev) => ({
-                ...prev,
-                geminiConfigured: res.geminiConfigured,
-                configuredCount: res.configuredCount,
-                providers: res.providers,
-                memory: res.memory || prev.memory,
-              }));
-            })
-            .catch(() => {});
-        }
+        const token = idTokenRef.current || licenseSession.authToken || getMemoryAuthToken();
 
         if (!dbDrawsLoadedOnce && token) {
           dbDrawsLoadedOnce = true;
@@ -569,26 +510,6 @@ export default function App() {
               ...cachedDbPredictions.filter((p) => p.period !== latestIssue),
             ].slice(0, 250);
 
-            // Self-learning online update on server (updates strategy weights, N-grams, IST stats & Gemini reflection)
-            sendAiLearningOutcome(licenseSession, {
-              gameMode: selectedMode,
-              period: latestIssue,
-              localPredictedSize: predForThisRound,
-              aiPredictedSize: savedPredData.aiPred,
-              actualNumber: num,
-              actualSize,
-              outcome,
-              level: levelAtPred,
-              recentSizesBefore: savedPredData.recentSizesBefore || [],
-              winningStrategy: ruleForThisRound,
-            })
-              .then((mem) => {
-                if (isMounted && mem) {
-                  setAiInsight((prev) => ({ ...prev, memory: mem }));
-                }
-              })
-              .catch(() => {});
-
             if (token) {
               savePredictionToDatabase(token, {
                 gameMode: selectedMode,
@@ -658,30 +579,15 @@ export default function App() {
             }
           }
 
-          const recentSizesBefore = recentNumbers.slice(0, 20).map((n) => get_big_small(n, isK3));
-          const levelForPeriod = currentLossLevelRef.current;
-
-          const predRecord: {
-            pred: PredictionResult;
-            predDigit: number;
-            singleJackpotDigit: number;
-            predNumbers: [number, number];
-            conf: number;
-            rule: string;
-            lossLevel: number;
-            period: string;
-            aiPred?: PredictionResult;
-            recentSizesBefore?: PredictionResult[];
-          } = {
+          const predRecord = {
             pred: nextPredObj.prediction,
             predDigit: nextPredObj.predictedDigit,
             singleJackpotDigit: nextPredObj.singleJackpotDigit,
             predNumbers: nextPredObj.predictedNumbers,
             conf: nextPredObj.confidence,
             rule: nextPredObj.rule,
-            lossLevel: levelForPeriod,
+            lossLevel: currentLossLevelRef.current,
             period: nextIssueNum,
-            recentSizesBefore,
           };
 
           lastActivePredictionRef.current = predRecord;
@@ -698,182 +604,6 @@ export default function App() {
             rule: nextPredObj.rule,
           });
 
-          // Smart Quota-Saver Check: skip split 50/50 L1 windows after Round 1 when Eco mode is active
-          const isFirstRoundOfSession = predictionHistoryMap.current.size <= 1;
-          const isSplitL1Window =
-            levelForPeriod === 1 &&
-            nextPredObj.backtestSummary?.entrySignal === 'WAIT_OPTIONAL';
-
-          if (aiEcoModeRef.current && !isFirstRoundOfSession && isSplitL1Window) {
-            setAiInsight((prev) => ({
-              ...prev,
-              status: 'ECO_STANDBY',
-              period: nextIssueNum,
-              ecoMode: true,
-              quotaSavedCount: (prev.quotaSavedCount || 0) + 1,
-              errorMessage: undefined,
-              errorCode: undefined,
-            }));
-          } else {
-            // Async Live Multi-Provider Free AI LLM Self-Learning Meta-Predictor
-            setAiInsight((prev) => ({
-              ...prev,
-              status: 'THINKING',
-              period: nextIssueNum,
-              ecoMode: aiEcoModeRef.current,
-              errorMessage: undefined,
-              errorCode: undefined,
-            }));
-
-            requestLiveAiPrediction(licenseSession, {
-              gameMode: selectedMode,
-              targetPeriod: nextIssueNum,
-              currentLevel: Math.max(1, Math.min(3, levelForPeriod)) as 1 | 2 | 3,
-              isK3,
-              recentNumbers: recentNumbers.slice(0, 40),
-              recentSizes: recentNumbers.slice(0, 40).map((n) => get_big_small(n, isK3)),
-              recentColors: recentSlice.slice(0, 20).map((it) => it.colour || ''),
-              localPrediction: nextPredObj.prediction,
-              localConfidence: nextPredObj.confidence,
-              localSingleDigit: nextPredObj.singleJackpotDigit,
-              strategies: (nextPredObj.backtestSummary?.strategyRankings || []).map((s) => ({
-                id: s.id,
-                name: s.name,
-                nextVote: s.nextVote,
-                level1Accuracy: s.level1Accuracy,
-                under3FixRate: s.under3FixRate,
-                l2RecoveryRate: s.l2RecoveryRate,
-                l3RecoveryRate: s.l3RecoveryRate,
-              })),
-              userRoots: nextPredObj.userCalcDetail
-                ? {
-                    calc1Root: nextPredObj.userCalcDetail.calc1.root,
-                    calc1Vote: nextPredObj.userCalcDetail.calc1.vote,
-                    calc2Root: nextPredObj.userCalcDetail.calc2.root,
-                    calc2Vote: nextPredObj.userCalcDetail.calc2.vote,
-                    calc3Root: nextPredObj.userCalcDetail.calc3.root,
-                    calc3Vote: nextPredObj.userCalcDetail.calc3.vote,
-                    masterVote: nextPredObj.userCalcDetail.masterVote,
-                    big170k: nextPredObj.userCalcDetail.total170kCalculations.bigVotes,
-                    small170k: nextPredObj.userCalcDetail.total170kCalculations.smallVotes,
-                  }
-                : undefined,
-              backtestMetrics: nextPredObj.backtestSummary
-                ? {
-                    datasetSize: nextPredObj.backtestSummary.datasetSize,
-                    bestStrategyName: nextPredObj.backtestSummary.bestStrategyName,
-                    bestLevel1Accuracy: nextPredObj.backtestSummary.bestLevel1Accuracy,
-                    bestUnder3FixRate: nextPredObj.backtestSummary.bestUnder3FixRate,
-                    gatedUnder3FixRate: nextPredObj.backtestSummary.gatedUnder3FixRate,
-                  }
-                : undefined,
-            })
-              .then((aiRes) => {
-                if (!isMounted || lastPredictedIssueRef.current !== nextIssueNum) return;
-
-                if (aiRes.ok && aiRes.ai) {
-                  const liveAi = aiRes.ai;
-                  const aiPair: [number, number] = [
-                    Math.min(liveAi.singleDigit, liveAi.backupDigit),
-                    Math.max(liveAi.singleDigit, liveAi.backupDigit),
-                  ];
-
-                  // Append live Free AI LLM node into cluster votes
-                  setClusterVotes((prevVotes) => {
-                    const filtered = prevVotes.filter(
-                      (v) =>
-                        !v.clusterName.includes('Gemini AI LLM') &&
-                        !v.clusterName.includes('Free AI LLM')
-                    );
-                    return [
-                      {
-                        clusterName: `🧠 Gemini AI LLM Node [${liveAi.providerLabel || liveAi.model}]`,
-                        nodeCount: 256000,
-                        voteSize: liveAi.prediction,
-                        voteNumbers: aiPair,
-                        confidence: liveAi.confidence,
-                        strategy: `${liveAi.patternRegime} • ${liveAi.learnedRule}`,
-                      },
-                      ...filtered,
-                    ];
-                  });
-
-                  // Fuse AI recommendation into active prediction when high confidence or L2/L3 override
-                  const shouldFuseAiSize =
-                    liveAi.confidence >= 74 ||
-                    (levelForPeriod >= 2 && liveAi.confidence >= 66);
-
-                  const fusedSize: PredictionResult = shouldFuseAiSize
-                    ? liveAi.prediction
-                    : predRecord.pred;
-                  const fusedDigit = shouldFuseAiSize
-                    ? liveAi.singleDigit
-                    : predRecord.singleJackpotDigit;
-                  const fusedPair = shouldFuseAiSize ? aiPair : predRecord.predNumbers;
-                  const fusedConf = Math.max(predRecord.conf, liveAi.confidence);
-                  const fusedRule = `${predRecord.rule} + AI(${liveAi.patternRegime})`;
-
-                  predRecord.aiPred = liveAi.prediction;
-                  predRecord.pred = fusedSize;
-                  predRecord.predDigit = fusedDigit;
-                  predRecord.singleJackpotDigit = fusedDigit;
-                  predRecord.predNumbers = fusedPair;
-                  predRecord.conf = fusedConf;
-                  predRecord.rule = fusedRule;
-                  predictionHistoryMap.current.set(nextIssueNum, { ...predRecord });
-                  if (lastActivePredictionRef.current?.period === nextIssueNum) {
-                    lastActivePredictionRef.current = { ...predRecord };
-                  }
-
-                  if (!isTargetLockedRef.current) {
-                    setCurrentPrediction((prev) =>
-                      prev.period === nextIssueNum
-                        ? {
-                            ...prev,
-                            prediction: fusedSize,
-                            predictedDigit: fusedDigit,
-                            singleJackpotDigit: fusedDigit,
-                            singleJackpotConfidence: Math.max(
-                              prev.singleJackpotConfidence || 96,
-                              liveAi.confidence
-                            ),
-                            predictedNumbers: fusedPair,
-                            confidence: fusedConf,
-                            rule: fusedRule,
-                          }
-                        : prev
-                    );
-                  }
-
-                  setAiInsight((prev) => ({
-                    ...prev,
-                    status: 'ACTIVE',
-                    period: nextIssueNum,
-                    prediction: liveAi,
-                    memory: liveAi.memoryStats,
-                    geminiConfigured: true,
-                    ecoMode: aiEcoModeRef.current,
-                    quotaSavedCount:
-                      (prev.quotaSavedCount || 0) + (liveAi.cached ? 1 : 0),
-                  }));
-                } else {
-                  const isMissingKey =
-                    aiRes.code === 'GEMINI_KEY_MISSING' || aiRes.code === 'AI_KEYS_MISSING';
-                  setAiInsight((prev) => ({
-                    ...prev,
-                    status: isMissingKey ? 'KEY_MISSING' : 'ERROR',
-                    period: nextIssueNum,
-                    geminiConfigured: !isMissingKey,
-                    memory: aiRes.memoryStats || prev.memory,
-                    ecoMode: aiEcoModeRef.current,
-                    errorMessage: aiRes.error,
-                    errorCode: aiRes.code,
-                  }));
-                }
-              })
-              .catch(() => {});
-          }
-
           if (token) {
             savePredictionToDatabase(token, {
               gameMode: selectedMode,
@@ -881,7 +611,7 @@ export default function App() {
               predictedSize: nextPredObj.prediction,
               predictedDigit: nextPredObj.singleJackpotDigit,
               outcome: 'PENDING',
-              level: levelForPeriod,
+              level: currentLossLevelRef.current,
               winningStrategy: nextPredObj.backtestSummary?.bestStrategyName || nextPredObj.rule,
               backtestAccuracy: nextPredObj.backtestSummary?.bestUnder3FixRate || nextPredObj.confidence,
             }).catch(() => {});
@@ -940,9 +670,6 @@ export default function App() {
             consensusRate={consensusRate}
             userCalcDetail={userCalcDetail}
             backtestSummary={backtestSummary}
-            aiInsight={aiInsight}
-            aiEcoMode={aiEcoMode}
-            onToggleAiEcoMode={handleToggleAiEcoMode}
             gameMode={selectedMode}
             onSwitchMode={handleSwitchMode}
             isApiLive={isApiLive}

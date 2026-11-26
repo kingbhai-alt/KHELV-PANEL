@@ -17,10 +17,7 @@ export const requireAuth = async (
     return res.status(401).json({ error: 'Unauthorized: Missing token' });
   }
 
-  const token = authHeader.split('Bearer ')[1]?.trim();
-  if (!token || token.split('.').length !== 3) {
-    return res.status(401).json({ error: 'Unauthorized: Invalid token format' });
-  }
+  const token = authHeader.split('Bearer ')[1];
   try {
     const decodedToken = await adminAuth.verifyIdToken(token);
     req.user = decodedToken;
