@@ -13,6 +13,7 @@ import { PatternAnalysisPanel } from './PatternAnalysisPanel';
 import { ClusterVote, UserCalculationDetail } from '../logic/jujutsuEngine';
 import { BacktestSummary } from '../logic/backtestEngine';
 import { BrandLogo } from './BrandLogo';
+import { AiInsightState } from '../services/aiService';
 
 interface JujutsuTerminalProps {
   stats: LotteryStats;
@@ -33,6 +34,9 @@ interface JujutsuTerminalProps {
   consensusRate?: number;
   userCalcDetail?: UserCalculationDetail;
   backtestSummary?: BacktestSummary;
+  aiInsight?: AiInsightState;
+  aiEcoMode?: boolean;
+  onToggleAiEcoMode?: () => void;
   gameMode: WinGoMode;
   onSwitchMode: (mode: WinGoMode) => void;
   isApiLive: boolean;
@@ -54,6 +58,9 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
   consensusRate = 95,
   userCalcDetail,
   backtestSummary,
+  aiInsight,
+  aiEcoMode = true,
+  onToggleAiEcoMode,
   gameMode,
   onSwitchMode,
   licenseSession,
@@ -492,6 +499,145 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
                       </span>
                     )}
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 2.5 CARD: 🧠 GEMINI FREE AI LLM SELF-LEARNING ENGINE */}
+          {aiInsight && (
+            <div className="rounded-2xl bg-gradient-to-br from-[#0e1229] via-[#0c0f22] to-[#080a17] border border-cyan-500/40 p-2.5 shadow-[0_0_20px_rgba(6,182,212,0.16)] mb-2 shrink-0">
+              <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${
+                      aiInsight.status === 'THINKING'
+                        ? 'bg-amber-400 animate-ping'
+                        : aiInsight.status === 'ACTIVE'
+                        ? 'bg-emerald-400 animate-pulse shadow-[0_0_8px_#10b981]'
+                        : aiInsight.status === 'ECO_STANDBY'
+                        ? 'bg-sky-400'
+                        : 'bg-cyan-400'
+                    }`}
+                  />
+                  <span className="text-[10px] font-black tracking-wider text-cyan-300 uppercase truncate">
+                    GEMINI FREE AI ENGINE
+                  </span>
+                  <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-200 border border-cyan-500/30 truncate max-w-[130px]">
+                    {aiInsight.prediction?.providerLabel || 'Gemini 3.1 Flash-Lite'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0">
+                  {onToggleAiEcoMode && (
+                    <button
+                      onClick={onToggleAiEcoMode}
+                      className={`text-[7.5px] font-mono font-bold px-1.5 py-0.5 rounded border cursor-pointer transition-colors ${
+                        aiEcoMode
+                          ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
+                          : 'bg-amber-950/80 text-amber-300 border-amber-500/40'
+                      }`}
+                      title="ECO saves free Gemini quota by calling AI on Sureshot + L2/L3 rounds"
+                    >
+                      {aiEcoMode ? 'ECO SAVER' : 'FULL LIVE'}
+                    </button>
+                  )}
+
+                  {aiInsight.prediction ? (
+                    <span
+                      className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded border shrink-0 ${
+                        aiInsight.prediction.hourRiskZone === 'GREEN_PRIME'
+                          ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40'
+                          : aiInsight.prediction.hourRiskZone === 'RED_CAUTION'
+                          ? 'bg-red-950/70 text-red-300 border-red-500/40'
+                          : 'bg-amber-950/70 text-amber-300 border-amber-500/40'
+                      }`}
+                    >
+                      {aiInsight.prediction.istHourLabel}
+                    </span>
+                  ) : (
+                    <span className="text-[8px] font-mono text-slate-400 shrink-0">
+                      {aiInsight.status === 'THINKING'
+                        ? 'THINKING...'
+                        : aiInsight.status === 'ECO_STANDBY'
+                        ? 'ECO SAVED'
+                        : 'READY'}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {aiInsight.prediction && aiInsight.status !== 'ECO_STANDBY' ? (
+                <div className="space-y-1.5">
+                  <div className="grid grid-cols-3 gap-1.5 text-center font-mono">
+                    <div className="rounded-lg bg-black/45 border border-slate-800 px-1.5 py-1">
+                      <div className="text-[7.5px] text-slate-400 uppercase">Gemini Call</div>
+                      <div
+                        className={`text-xs font-black ${
+                          aiInsight.prediction.prediction === 'BIG'
+                            ? 'text-[#ff4d6d]'
+                            : 'text-[#10b981]'
+                        }`}
+                      >
+                        {aiInsight.prediction.prediction} ({aiInsight.prediction.confidence}%)
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg bg-black/45 border border-slate-800 px-1.5 py-1">
+                      <div className="text-[7.5px] text-slate-400 uppercase">AI Digits</div>
+                      <div className="text-xs font-black text-amber-300">
+                        [{aiInsight.prediction.singleDigit}] · {aiInsight.prediction.backupDigit}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg bg-black/45 border border-slate-800 px-1.5 py-1">
+                      <div className="text-[7.5px] text-slate-400 uppercase">Entry Mode</div>
+                      <div className="text-[9.5px] font-black text-sky-300 truncate pt-0.5">
+                        {aiInsight.prediction.entryAdvice === 'FIRE_UNDER2'
+                          ? '🔥 UNDER-2 FIRE'
+                          : aiInsight.prediction.entryAdvice === 'STRONG_ENTRY'
+                          ? '⚡ STRONG'
+                          : '⚠️ LOW STAKE'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg bg-black/40 border border-cyan-500/20 px-2 py-1 text-[9px] font-mono text-slate-300 leading-snug">
+                    <span className="text-cyan-300 font-bold">{aiInsight.prediction.patternRegime}: </span>
+                    <span>{aiInsight.prediction.reasoning}</span>
+                  </div>
+
+                  <div className="rounded-lg bg-emerald-950/30 border border-emerald-500/25 px-2 py-1 text-[8.5px] font-mono text-emerald-300 leading-snug">
+                    <span className="font-bold">Rule: </span>
+                    <span>{aiInsight.prediction.learnedRule}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg bg-black/40 border border-slate-800 px-2 py-1.5 text-[9px] font-mono text-slate-300">
+                  {aiInsight.status === 'THINKING'
+                    ? 'Gemini Free AI (3.1 Flash-Lite / 4 Hydrogen) analyzing 14 algos & learned patterns...'
+                    : aiInsight.status === 'ECO_STANDBY'
+                    ? 'Gemini Eco-Saver active: skipped split 50/50 L1 round to protect free Gemini quota. Local 14-Algo Meta-Ensemble active (auto-fires Gemini on Sureshot & L2/L3).'
+                    : aiInsight.status === 'KEY_MISSING'
+                    ? 'Add your free GEMINI_API_KEY in Settings > Secrets to enable live Gemini 3.1 Flash-Lite & 4 Hydrogen predictions. Local 14-Algo Meta-Ensemble is active.'
+                    : aiInsight.errorMessage || 'Self-learning neural memory active.'}
+                </div>
+              )}
+
+              {aiInsight.memory && (
+                <div className="mt-1.5 pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-[8px] font-mono text-slate-400 tabular-nums">
+                  <span>
+                    Learned: <strong className="text-cyan-300">{aiInsight.memory.totalLearnedRounds}</strong>
+                  </span>
+                  <span>
+                    Gemini: <strong className="text-sky-300">{aiInsight.geminiConfigured ? '2 Free Models' : 'Key Needed'}</strong>
+                  </span>
+                  <span>
+                    Saved: <strong className="text-emerald-400">{aiInsight.quotaSavedCount ?? 0}</strong> calls
+                  </span>
+                  <span>
+                    Rules: <strong className="text-amber-300">{aiInsight.memory.lessonsCount}</strong>
+                  </span>
                 </div>
               )}
             </div>

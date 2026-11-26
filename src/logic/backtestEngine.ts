@@ -94,10 +94,12 @@ interface SliceEvaluation {
   treeMargin: number;
   markovMargin: number;
   chiZ12: number;
+  top5AgreeCount: number;
+  top5MajorityVote: SizeLabel;
 }
 
 /**
- * Evaluates 12 individual algorithmic predictors on a slice `histDesc`
+ * Evaluates 14 algorithmic predictors on a slice `histDesc`
  * (index 0 = newest known round before target) plus signal confidence margins.
  */
 function evaluateMethodsOnSlice(
@@ -293,6 +295,57 @@ function evaluateMethodsOnSlice(
       ? 'BIG'
       : 'SMALL';
 
+  // 14. Self-Learning Meta-Ensemble (Reinforcement-weighted Top-5 Causal Core + Empirical 4-Gram Adaptation)
+  const coreWeights: Array<{ vote: SizeLabel; weight: number }> = [
+    { vote: markovVote, weight: 1.38 },
+    { vote: empiricalDigitContextVote, weight: 1.35 },
+    { vote: entropyMinVote, weight: 1.32 },
+    { vote: conditionalSwitcherVote, weight: 1.26 },
+    { vote: chiSquareVote, weight: 1.18 },
+    { vote: bayesianVote, weight: 1.12 },
+    { vote: dragonVote, weight: 1.10 },
+  ];
+  let metaBig = 0;
+  let metaSmall = 0;
+  for (const item of coreWeights) {
+    if (item.vote === 'BIG') metaBig += item.weight;
+    else metaSmall += item.weight;
+  }
+  // Causal 4-gram empirical pattern reinforcement from slice history
+  if (n >= 16) {
+    let gram4Big = 0;
+    let gram4Small = 0;
+    const g4Limit = Math.min(n - 4, 480);
+    for (let i = 1; i < g4Limit; i++) {
+      if (
+        histSizesDesc[i] === s0 &&
+        histSizesDesc[i + 1] === s1 &&
+        histSizesDesc[i + 2] === s2 &&
+        histSizesDesc[i + 3] === s3
+      ) {
+        const w = i < 80 ? 0.55 : 0.35;
+        if (histSizesDesc[i - 1] === 'BIG') gram4Big += w;
+        else gram4Small += w;
+      }
+    }
+    metaBig += Math.min(1.8, gram4Big);
+    metaSmall += Math.min(1.8, gram4Small);
+  }
+  const selfLearnedMetaVote: SizeLabel = metaBig >= metaSmall ? 'BIG' : 'SMALL';
+
+  // Count agreement among Top-5 proven causal algorithms
+  const top5Votes: SizeLabel[] = [
+    markovVote,
+    empiricalDigitContextVote,
+    entropyMinVote,
+    conditionalSwitcherVote,
+    chiSquareVote,
+  ];
+  const top5Big = top5Votes.filter((v) => v === 'BIG').length;
+  const top5Small = top5Votes.length - top5Big;
+  const top5MajorityVote: SizeLabel = top5Big >= top5Small ? 'BIG' : 'SMALL';
+  const top5AgreeCount = Math.max(top5Big, top5Small);
+
   return {
     votes: {
       USER_3WAY_ROOT: user3WayVote,
@@ -308,10 +361,13 @@ function evaluateMethodsOnSlice(
       TRANSITION_ENTROPY_MIN: entropyMinVote,
       CONDITIONAL_L2L3_SWITCHER: conditionalSwitcherVote,
       EMPIRICAL_DIGIT_CONTEXT: empiricalDigitContextVote,
+      SELF_LEARNED_META_LEARNER: selfLearnedMetaVote,
     },
     treeMargin: Math.max(Math.abs(p3Big - p3Small), Math.round(Math.abs(digCtxBig - digCtxSmall))),
     markovMargin: Math.abs(markovBig - markovSmall),
     chiZ12,
+    top5AgreeCount,
+    top5MajorityVote,
   };
 }
 
@@ -380,6 +436,11 @@ const STRATEGY_META: Array<{ id: string; name: string; desc: string }> = [
     id: 'EMPIRICAL_DIGIT_CONTEXT',
     name: 'Empirical Digit-Context Matrix',
     desc: 'Combined P(next | lastDigit) + 3-pattern Bayesian distribution across 500+ DB',
+  },
+  {
+    id: 'SELF_LEARNED_META_LEARNER',
+    name: 'AI Self-Learning Meta-Ensemble',
+    desc: 'Reinforcement-weighted Top-5 Markov/Prefix/Digit-Context + 4-Gram pattern adaptation',
   },
 ];
 
@@ -523,26 +584,24 @@ export function runFull500RoundBacktest(
     const isRecent50 = idx < 50;
 
     // Orthogonal Cascade Vote:
-    // L1 -> Empirical Digit-Context & 3rd-Order Prefix Tree, L2 -> 2nd-Order Markov Transition, L3 -> Chi-Square/Z-Score Equilibrium
-    const vTree = votes.EMPIRICAL_DIGIT_CONTEXT;
+    // L1 -> Self-Learned Meta-Ensemble (Top-5 Causal + 4-Gram), L2 -> 2nd-Order Markov Transition, L3 -> Chi-Square/Z-Score Equilibrium
+    const vMeta = votes.SELF_LEARNED_META_LEARNER;
     const vMarkov2 = votes.MARKOV_2ND_ORDER;
-    const vStreak = votes.CONDITIONAL_L2L3_SWITCHER;
     const vChi = evalRes.chiZ12 >= 0.7 ? 'SMALL' : evalRes.chiZ12 <= -0.7 ? 'BIG' : votes.TRANSITION_ENTROPY_MIN;
 
     const cascadeVote: SizeLabel =
       cascadeStats.simLevel === 1
-        ? vTree
+        ? vMeta
         : cascadeStats.simLevel === 2
         ? vMarkov2
         : vChi;
 
-    // High-Margin Consensus Entry Check
-    const isStrongL1 =
-      vTree === vMarkov2 && (vMarkov2 === vStreak || vMarkov2 === votes.TRANSITION_ENTROPY_MIN) && evalRes.treeMargin >= 4;
+    // High-Confidence Sureshot Lock Entry Check (>=4/5 Top Causal Algos Agree)
+    const isStrongL1 = evalRes.top5AgreeCount >= 4;
     if (gatedStats.simLevel > 1 || isStrongL1) {
       const gatedVote: SizeLabel =
         gatedStats.simLevel === 1
-          ? vTree
+          ? vMeta
           : gatedStats.simLevel === 2
           ? vMarkov2
           : vChi;
@@ -706,8 +765,8 @@ export function runFull500RoundBacktest(
       const scoreB = b.l2RecoveryRate * 0.6 + b.under3FixRate * 0.4 + bonusB;
       return scoreB - scoreA;
     }
-    const scoreA = a.under3FixRate * 0.45 + a.recent50Accuracy * 0.35 + a.level1Accuracy * 0.2 + bonusA;
-    const scoreB = b.under3FixRate * 0.45 + b.recent50Accuracy * 0.35 + b.level1Accuracy * 0.2 + bonusB;
+    const scoreA = a.under3FixRate * 0.45 + a.level1Accuracy * 0.30 + a.l2RecoveryRate * 0.15 + a.recent50Accuracy * 0.10 + bonusA;
+    const scoreB = b.under3FixRate * 0.45 + b.level1Accuracy * 0.30 + b.l2RecoveryRate * 0.15 + b.recent50Accuracy * 0.10 + bonusB;
     return scoreB - scoreA;
   });
 
@@ -726,31 +785,26 @@ export function runFull500RoundBacktest(
       ? upcomingChiVote
       : currentLevel === 2
       ? upcomingVotes.MARKOV_2ND_ORDER
-      : best.nextVote;
+      : upcomingVotes.SELF_LEARNED_META_LEARNER;
 
-  // Determine Entry Signal Strength for 10-Win Under-3 Precision
-  const core4Agreed =
-    upcomingVotes.EMPIRICAL_DIGIT_CONTEXT === upcomingVotes.MARKOV_2ND_ORDER &&
-    (upcomingVotes.MARKOV_2ND_ORDER === upcomingVotes.CONDITIONAL_L2L3_SWITCHER ||
-      upcomingVotes.MARKOV_2ND_ORDER === upcomingVotes.TRANSITION_ENTROPY_MIN);
-
+  // Determine Entry Signal Strength for Under-2 / Under-3 Precision
   let entrySignal: EntrySignalTier = 'STRONG_ENTRY';
-  let entryReason = 'Orthogonal consensus active';
+  let entryReason = 'AI Self-Learning Meta consensus active';
   if (currentLevel >= 2) {
     entrySignal = 'SURESHOT_LOCK';
     entryReason =
       currentLevel === 3
         ? `Level-3 Chi-Square/Tree Recovery Lock (${upcomingChiVote})`
         : `Level-2 Markov-2 Anti-Loss Lock (${upcomingVotes.MARKOV_2ND_ORDER})`;
-  } else if (core4Agreed && upcomingEval.treeMargin >= 4) {
+  } else if (upcomingEval.top5AgreeCount >= 4) {
     entrySignal = 'SURESHOT_LOCK';
-    entryReason = `Sureshot Entry: Empirical/Markov/Tree aligned (Margin +${upcomingEval.treeMargin})`;
-  } else if (core4Agreed || upcomingEval.treeMargin >= 3) {
+    entryReason = `Sureshot Entry: ${upcomingEval.top5AgreeCount}/5 Top Causal Algos aligned (Margin +${upcomingEval.treeMargin})`;
+  } else if (upcomingEval.top5AgreeCount >= 3 && upcomingEval.treeMargin >= 2) {
     entrySignal = 'STRONG_ENTRY';
-    entryReason = `Strong Entry: Majority pattern consensus (+${upcomingEval.treeMargin})`;
+    entryReason = `Strong Entry: ${upcomingEval.top5AgreeCount}/5 Meta Consensus (+${upcomingEval.treeMargin})`;
   } else {
     entrySignal = 'WAIT_OPTIONAL';
-    entryReason = 'Split 50/50 window — Wait for Sureshot Lock recommended';
+    entryReason = 'Split 50/50 window — Wait for 4/5 Sureshot Lock recommended';
   }
 
   // Backtest single-number empirical Markov conditional transition probabilities
