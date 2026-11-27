@@ -92,7 +92,7 @@ export async function ensureJaiClub500Seeded(gameMode: string): Promise<void> {
   }
 
   try {
-    const existingSeed = await db
+    const existingSeeds = await db
       .select({ id: drawHistory.id })
       .from(drawHistory)
       .where(
@@ -101,9 +101,9 @@ export async function ensureJaiClub500Seeded(gameMode: string): Promise<void> {
           eq(drawHistory.source, 'jaiclub_500')
         )
       )
-      .limit(1);
+      .limit(JAICLUB_HISTORY_500.length);
 
-    if (existingSeed.length === 0) {
+    if (existingSeeds.length < JAICLUB_HISTORY_500.length) {
       const isK3 = gameMode.startsWith('K3');
       const rowsToInsert = JAICLUB_HISTORY_500.map((item, idx) => {
         let num = item.number;
@@ -223,13 +223,13 @@ export async function saveDrawsBatch(
 
 export async function getStoredDraws(
   gameMode: string,
-  limit: number = 1000
+  limit: number = 2500
 ): Promise<StoredDrawItem[]> {
   await ensureJaiClub500Seeded(gameMode);
 
   if (!isDbConfigured) {
     const list = inMemoryDraws.get(gameMode) || [];
-    return list.slice(0, Math.min(limit, 1200));
+    return list.slice(0, Math.min(limit, 5000));
   }
 
   try {
@@ -238,7 +238,7 @@ export async function getStoredDraws(
       .from(drawHistory)
       .where(eq(drawHistory.gameMode, gameMode))
       .orderBy(desc(drawHistory.period))
-      .limit(Math.min(limit, 1200));
+      .limit(Math.min(limit, 5000));
 
     if (rows && rows.length > 0) {
       return rows.map((r: any) => ({
@@ -254,7 +254,7 @@ export async function getStoredDraws(
   }
 
   const list = inMemoryDraws.get(gameMode) || [];
-  return list.slice(0, Math.min(limit, 1200));
+  return list.slice(0, Math.min(limit, 5000));
 }
 
 export async function upsertPredictionLog(params: {

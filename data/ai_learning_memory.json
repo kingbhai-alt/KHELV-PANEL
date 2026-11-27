@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "totalLearnedRounds": 499,
+  "aiEvaluatedRounds": 0,
+  "aiWins": 0,
+  "aiUnder2Wins": 0,
+  "aiLosses": 0,
+  "strategyWeights": {
+    "MARKOV_2ND_ORDER": 1.38,
+    "EMPIRICAL_DIGIT_CONTEXT": 1.35,
+    "TRANSITION_ENTROPY_MIN": 1.32,
+    "CONDITIONAL_L2L3_SWITCHER": 1.26,
+    "CHI_SQUARE_IMBALANCE": 1.18,
+    "SELF_LEARNED_META_LEARNER": 1.42,
+    "BAYESIAN_ENTROPY": 1.12,
+    "DRAGON_MOMENTUM": 1.1,
+    "ZIGZAG_OSCILLATOR": 1.04,
+    "DOUBLE_PAIR_SYMMETRY": 0.98,
+    "EMA_PARITY_MOMENTUM": 0.96,
+    "AFFINE_MODULAR": 0.92,
+    "STRIDE_CONVOLUTION": 0.9,
+    "USER_3WAY_ROOT": 1.05
+  },
+  "pattern3GramStats": {},
+  "streakStats": {},
+  "hourlyStats": {},
+  "recentLessons": [
+    {
+      "ts": "2026-11-26T15:03:24.635Z",
+      "gameMode": "1M",
+      "period": "500-ROUND-BASELINE",
+      "pattern": "CAUTION-HOURS",
+      "outcome": "BASELINE_PRIOR",
+      "level": 3,
+      "lesson": "In RED caution hours (03-05, 09-10, 19-22 IST), enter only on SURESHOT_LOCK (>=4/5 top algos) to cut >L3 losses from 30 to 19."
+    },
+    {
+      "ts": "2026-11-26T15:03:24.635Z",
+      "gameMode": "1M",
+      "period": "500-ROUND-BASELINE",
+      "pattern": "PRIME-SLOTS",
+      "outcome": "BASELINE_PRIOR",
+      "level": 1,
+      "lesson": "Prime Under-2/3 slots (06-09, 12-13, 14-15, 20-21 IST) achieve 92-100% Under-2/3 fix-win with Meta-Ensemble + Markov-2."
+    }
+  ],
+  "updatedAt": "2026-11-26T15:03:24.635Z"
+}

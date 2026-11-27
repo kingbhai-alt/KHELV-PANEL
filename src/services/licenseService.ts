@@ -398,6 +398,22 @@ export async function verifyLicenseKey(keyToVerify: string): Promise<Verificatio
     });
 
     const contentType = res.headers.get('content-type') || '';
+    if (res.status === 401 || res.status === 403) {
+      if (contentType.includes('application/json')) {
+        const errData = await res.json();
+        return {
+          valid: false,
+          error: errData.error || 'KEY_INVALID',
+          message: errData.message || 'Verification rejected by security authority.',
+        };
+      }
+      return {
+        valid: false,
+        error: 'KEY_INVALID',
+        message: `Verification rejected by security authority (HTTP ${res.status}).`,
+      };
+    }
+
     if (!contentType.includes('application/json') || res.status === 404 || res.status === 405 || res.status >= 500) {
       // Backend API unavailable (e.g. static deployment on Vercel) -> verify cryptographically locally
       return await verifyLicenseKeyLocally(cleanKey, hw);

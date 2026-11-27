@@ -1,9 +1,10 @@
-import { JAICLUB_HISTORY_500 } from '../data/jaiclubHistory500';
+import { JAICLUB_HISTORY_500, JaiClubDrawRecord } from '../data/jaiclubHistory500';
+import { KURMA_HISTORY_20261127 } from '../data/kurmaHistory20261127';
 
 /**
  * WinGo Lottery Service
  * Connects to live WinGo Draw API (30S, 1M, TRX_1M, K3_1M modes)
- * Merges live API draws with the 500-round JaiClub historical dataset & Cloud SQL DB records.
+ * Merges live API draws with the combined 1,000-round JaiClub + Kurma historical dataset & Cloud SQL DB records.
  */
 
 export interface DrawItem {
@@ -65,13 +66,13 @@ export function isTrxGame(mode: WinGoMode | string): boolean {
   return String(mode).startsWith('TRX') || String(mode).startsWith('Trx');
 }
 
-export function getJaiClub500DrawItems(type: WinGoMode): DrawItem[] {
+function recordsToDrawItems(records: JaiClubDrawRecord[], type: WinGoMode): DrawItem[] {
   const isK3 = isK3Game(type);
-  return JAICLUB_HISTORY_500.map((item, idx) => {
+  return records.map((item, idx) => {
     if (isK3) {
       const d1 = (item.number % 6) + 1;
-      const d2 = (JAICLUB_HISTORY_500[(idx + 1) % JAICLUB_HISTORY_500.length].number % 6) + 1;
-      const d3 = (JAICLUB_HISTORY_500[(idx + 2) % JAICLUB_HISTORY_500.length].number % 6) + 1;
+      const d2 = (records[(idx + 1) % records.length].number % 6) + 1;
+      const d3 = (records[(idx + 2) % records.length].number % 6) + 1;
       const sum = d1 + d2 + d3;
       return {
         issueNumber: item.period,
@@ -87,13 +88,29 @@ export function getJaiClub500DrawItems(type: WinGoMode): DrawItem[] {
   });
 }
 
+export function getJaiClub500DrawItems(type: WinGoMode): DrawItem[] {
+  return recordsToDrawItems(JAICLUB_HISTORY_500, type);
+}
+
+export function getKurma20261127DrawItems(type: WinGoMode): DrawItem[] {
+  return recordsToDrawItems(KURMA_HISTORY_20261127, type);
+}
+
 export function mergeWith500Dataset(liveItems: DrawItem[], type: WinGoMode): DrawItem[] {
   const map = new Map<string, DrawItem>();
-  // First populate with the 500 JaiClub historical dataset
+  // 1. Populate with the existing JaiClub historical buffer
   for (const seedItem of getJaiClub500DrawItems(type)) {
-    map.set(seedItem.issueNumber, seedItem);
+    if (seedItem.issueNumber) {
+      map.set(seedItem.issueNumber, seedItem);
+    }
   }
-  // Overlay live API / DB items (live takes priority on matching period)
+  // 2. Integrate the additional 500-round 2026-11-27 Kurma historical buffer (deduplicated by period)
+  for (const extraItem of getKurma20261127DrawItems(type)) {
+    if (extraItem.issueNumber && !map.has(extraItem.issueNumber)) {
+      map.set(extraItem.issueNumber, extraItem);
+    }
+  }
+  // 3. Overlay live API / DB items (live takes priority on matching period)
   for (const liveItem of liveItems) {
     if (liveItem.issueNumber) {
       map.set(liveItem.issueNumber, liveItem);
@@ -109,7 +126,7 @@ export function mergeWith500Dataset(liveItems: DrawItem[], type: WinGoMode): Dra
       return 0;
     }
   });
-  return merged.slice(0, 1000);
+  return merged.slice(0, 5000);
 }
 
 export async function fetchLiveDrawHistory(type: WinGoMode = '1M'): Promise<DrawItem[]> {
@@ -179,6 +196,6 @@ export async function fetchLiveDrawHistory(type: WinGoMode = '1M'): Promise<Draw
     // Continue to 500 dataset fallback
   }
 
-  // Fallback: Full 500-round JaiClub dataset
-  return getJaiClub500DrawItems(type);
+  // Fallback: Full combined historical dataset (JaiClub + Kurma 2026-11-27)
+  return mergeWith500Dataset([], type);
 }

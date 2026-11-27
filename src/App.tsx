@@ -34,6 +34,20 @@ import {
   saveBacktestReportToDatabase,
   StoredPredictionLog,
 } from './services/dbService';
+import {
+  computeSelfLearningBoost,
+  recordSelfLearningOutcome,
+  loadSelfLearningState,
+  saveSelfLearningState,
+  SelfLearningState,
+  PatternRegime,
+} from './logic/aiSelfLearningEngine';
+import {
+  requestGeminiLivePrediction,
+  sendSelfLearningFeedbackToServer,
+  GeminiLiveInsight,
+  GeminiPredictionPayload,
+} from './services/aiService';
 
 export default function App() {
   const idTokenRef = useRef<string | null>(null);
@@ -126,6 +140,33 @@ export default function App() {
       }
     >
   >(new Map());
+  // 🧠 Live Self-Learning & Gemini 4 Hydrogen AI State
+  const [selfLearningState, setSelfLearningState] = useState<SelfLearningState | null>(null);
+  const selfLearningStateRef = useRef<SelfLearningState | null>(null);
+  const [geminiInsight, setGeminiInsight] = useState<GeminiLiveInsight | null>(null);
+  const [isGeminiLoading, setIsGeminiLoading] = useState<boolean>(false);
+
+  const geminiCooldownUntilRef = useRef<number>(0);
+  const roundsSinceGeminiRef = useRef<number>(99);
+  const lastGeminiRegimeRef = useRef<string>('');
+  const lastGeminiPayloadRef = useRef<{
+    payload: GeminiPredictionPayload;
+    finalInitialConf: number;
+    finalInitialPair: [number, number];
+  } | null>(null);
+
+  const geminiPredByPeriodRef = useRef<Map<string, PredictionResult>>(new Map());
+  const basePredByPeriodRef = useRef<
+    Map<
+      string,
+      {
+        basePred: PredictionResult;
+        regime: PatternRegime;
+        strategyRankings?: BacktestSummary['strategyRankings'];
+      }
+    >
+  >(new Map());
+
   const lastActivePredictionRef = useRef<{
     period: string;
     pred: PredictionResult;
@@ -200,6 +241,14 @@ export default function App() {
     lastProcessedIssueRef.current = '';
     lastPredictedIssueRef.current = '';
     predictionHistoryMap.current.clear();
+    const loadedAi = loadSelfLearningState(mode);
+    selfLearningStateRef.current = loadedAi;
+    setSelfLearningState(loadedAi);
+    setGeminiInsight(null);
+    setIsGeminiLoading(false);
+    roundsSinceGeminiRef.current = 99;
+    lastGeminiRegimeRef.current = '';
+    lastGeminiPayloadRef.current = null;
     setStats({
       wins: 0,
       jackpots: 0,
@@ -288,7 +337,7 @@ export default function App() {
         if (!dbDrawsLoadedOnce && token) {
           dbDrawsLoadedOnce = true;
           const [dbDraws, dbPredLogs] = await Promise.all([
-            fetchDatabaseDraws(token, selectedMode, 1000),
+            fetchDatabaseDraws(token, selectedMode, 5000),
             fetchDatabasePredictionLogs(token, selectedMode, 250),
           ]);
           cachedDbDraws = dbDraws;
@@ -524,6 +573,45 @@ export default function App() {
                 backtestAccuracy: confForThisRound,
               }).catch(() => {});
             }
+
+            // Record Self-Learning AI outcome & sync feedback to server
+            const baseMeta =
+              basePredByPeriodRef.current.get(cleanIssue) ||
+              basePredByPeriodRef.current.get(latestIssue);
+            const geminiPredUsed =
+              geminiPredByPeriodRef.current.get(cleanIssue) ||
+              geminiPredByPeriodRef.current.get(latestIssue);
+            const curAiState =
+              selfLearningStateRef.current || loadSelfLearningState(selectedMode);
+            const updatedAiState = recordSelfLearningOutcome(curAiState, {
+              period: latestIssue,
+              regime: baseMeta?.regime || 'CHOPPY_MIXED',
+              level: levelAtPred,
+              basePred: baseMeta?.basePred || predForThisRound,
+              aiPred: predForThisRound,
+              geminiPred: geminiPredUsed,
+              actualNumber: num,
+              actualSize,
+              strategyRankings: baseMeta?.strategyRankings,
+            });
+            selfLearningStateRef.current = updatedAiState;
+            saveSelfLearningState(selectedMode, updatedAiState);
+            if (isMounted) setSelfLearningState(updatedAiState);
+
+            const latestLesson = updatedAiState.recentLessons[0]?.lesson || '';
+            sendSelfLearningFeedbackToServer({
+              gameMode: selectedMode,
+              period: latestIssue,
+              regime: baseMeta?.regime || 'CHOPPY_MIXED',
+              level: levelAtPred,
+              basePred: baseMeta?.basePred || predForThisRound,
+              aiPred: predForThisRound,
+              geminiPred: geminiPredUsed,
+              actualNumber: num,
+              actualSize,
+              outcome,
+              lesson: latestLesson,
+            }).catch(() => {});
           }
         }
 
@@ -545,8 +633,8 @@ export default function App() {
           lastPredictedIssueRef.current = nextIssueNum;
 
           const isK3 = isK3Game(selectedMode);
-          // Deep historical dataset: pass all 500+ DB & live rounds + saved DB prediction logs for backtesting BEFORE prediction
-          const recentSlice = items.slice(0, 1000);
+          // Deep historical dataset: pass all 999+ DB & live rounds + saved DB prediction logs for backtesting BEFORE prediction
+          const recentSlice = items.slice(0, 5000);
           const recentNumbers = recentSlice.map((it) => Number(it.number));
           const recentPeriods = recentSlice.map((it) => it.issueNumber);
 
@@ -579,13 +667,52 @@ export default function App() {
             }
           }
 
+          const curAiState =
+            selfLearningStateRef.current || loadSelfLearningState(selectedMode);
+          if (!selfLearningStateRef.current) {
+            selfLearningStateRef.current = curAiState;
+            if (isMounted) setSelfLearningState(curAiState);
+          }
+
+          const boost = computeSelfLearningBoost(
+            nextPredObj,
+            recentNumbers,
+            currentLossLevelRef.current,
+            isK3,
+            curAiState
+          );
+
+          basePredByPeriodRef.current.set(nextIssueNum, {
+            basePred: nextPredObj.prediction,
+            regime: boost.patternFeatures.regime,
+            strategyRankings: nextPredObj.backtestSummary?.strategyRankings,
+          });
+
+          const finalInitialPred = boost.boostedPrediction;
+          const finalInitialDigit = boost.boostedDigit;
+          const finalInitialConf = boost.boostedConfidence;
+          const finalInitialPair: [number, number] =
+            finalInitialPred === nextPredObj.prediction
+              ? nextPredObj.predictedNumbers
+              : isK3
+              ? finalInitialPred === 'BIG'
+                ? [11, 13]
+                : [8, 9]
+              : finalInitialPred === 'BIG'
+              ? [6, 7]
+              : [2, 3];
+          const finalInitialRule =
+            finalInitialPred !== nextPredObj.prediction
+              ? boost.boostReason
+              : nextPredObj.rule;
+
           const predRecord = {
-            pred: nextPredObj.prediction,
-            predDigit: nextPredObj.predictedDigit,
-            singleJackpotDigit: nextPredObj.singleJackpotDigit,
-            predNumbers: nextPredObj.predictedNumbers,
-            conf: nextPredObj.confidence,
-            rule: nextPredObj.rule,
+            pred: finalInitialPred,
+            predDigit: finalInitialDigit,
+            singleJackpotDigit: finalInitialDigit,
+            predNumbers: finalInitialPair,
+            conf: finalInitialConf,
+            rule: finalInitialRule,
             lossLevel: currentLossLevelRef.current,
             period: nextIssueNum,
           };
@@ -595,26 +722,92 @@ export default function App() {
 
           setCurrentPrediction({
             period: nextIssueNum,
-            prediction: nextPredObj.prediction,
-            predictedDigit: nextPredObj.predictedDigit,
-            singleJackpotDigit: nextPredObj.singleJackpotDigit,
-            singleJackpotConfidence: nextPredObj.singleJackpotConfidence,
-            predictedNumbers: nextPredObj.predictedNumbers,
-            confidence: nextPredObj.confidence,
-            rule: nextPredObj.rule,
+            prediction: finalInitialPred,
+            predictedDigit: finalInitialDigit,
+            singleJackpotDigit: finalInitialDigit,
+            singleJackpotConfidence: finalInitialConf,
+            predictedNumbers: finalInitialPair,
+            confidence: finalInitialConf,
+            rule: finalInitialRule,
           });
 
           if (token) {
             savePredictionToDatabase(token, {
               gameMode: selectedMode,
               period: nextIssueNum,
-              predictedSize: nextPredObj.prediction,
-              predictedDigit: nextPredObj.singleJackpotDigit,
+              predictedSize: finalInitialPred,
+              predictedDigit: finalInitialDigit,
               outcome: 'PENDING',
               level: currentLossLevelRef.current,
-              winningStrategy: nextPredObj.backtestSummary?.bestStrategyName || nextPredObj.rule,
-              backtestAccuracy: nextPredObj.backtestSummary?.bestUnder3FixRate || nextPredObj.confidence,
+              winningStrategy: nextPredObj.backtestSummary?.bestStrategyName || finalInitialRule,
+              backtestAccuracy: nextPredObj.backtestSummary?.bestUnder3FixRate || finalInitialConf,
             }).catch(() => {});
+          }
+
+          // Query live Gemini Self-Learning LLM asynchronously with smart quota-saving throttle
+          const aiCycles = curAiState.cyclesTotal || 0;
+          const aiU2Wins = curAiState.l1Wins + curAiState.l2Wins;
+          const aiU3Wins = aiU2Wins + curAiState.l3Wins;
+          const geminiPayload: GeminiPredictionPayload = {
+            gameMode: selectedMode,
+            targetPeriod: nextIssueNum,
+            currentLevel: currentLossLevelRef.current,
+            isK3,
+            patternFeatures: boost.patternFeatures,
+            basePrediction: nextPredObj.prediction,
+            selfLearnedPrediction: boost.boostedPrediction,
+            selfLearnedDigit: boost.boostedDigit,
+            selfLearnedReason: boost.boostReason,
+            userCalcDetail: nextPredObj.userCalcDetail,
+            backtestSummary: nextPredObj.backtestSummary
+              ? {
+                  datasetSize: nextPredObj.backtestSummary.datasetSize,
+                  bestStrategyName: nextPredObj.backtestSummary.bestStrategyName,
+                  bestLevel1Accuracy: nextPredObj.backtestSummary.bestLevel1Accuracy,
+                  bestUnder3FixRate: nextPredObj.backtestSummary.bestUnder3FixRate,
+                  ensembleUnder3FixRate: nextPredObj.backtestSummary.ensembleUnder3FixRate,
+                  entrySignal: nextPredObj.backtestSummary.entrySignal,
+                  entryReason: nextPredObj.backtestSummary.entryReason,
+                  digitProbabilities: nextPredObj.backtestSummary.digitProbabilities,
+                  topStrategies: nextPredObj.backtestSummary.strategyRankings.slice(0, 6),
+                }
+              : undefined,
+            selfLearningSummary: {
+              totalRoundsLearned: curAiState.totalRoundsLearned,
+              geminiWins: curAiState.geminiWins,
+              geminiTotal: curAiState.geminiTotal,
+              under2WinRate: aiCycles > 0 ? Math.round((aiU2Wins / aiCycles) * 100) : 0,
+              under3WinRate: aiCycles > 0 ? Math.round((aiU3Wins / aiCycles) * 100) : 0,
+              bigAccEMA: curAiState.bigAccEMA,
+              smallAccEMA: curAiState.smallAccEMA,
+              recentLessons: curAiState.recentLessons.slice(0, 8),
+            },
+          };
+
+          lastGeminiPayloadRef.current = {
+            payload: geminiPayload,
+            finalInitialConf,
+            finalInitialPair,
+          };
+
+          const nowMs = Date.now();
+          const inCooldown = nowMs < geminiCooldownUntilRef.current;
+          const regimeChanged =
+            !lastGeminiRegimeRef.current ||
+            boost.patternFeatures.regime !== lastGeminiRegimeRef.current;
+          const shouldCallGemini =
+            !inCooldown &&
+            (currentLossLevelRef.current >= 2 ||
+              regimeChanged ||
+              roundsSinceGeminiRef.current >= 4);
+
+          if (!shouldCallGemini) {
+            if (!inCooldown) {
+              roundsSinceGeminiRef.current += 1;
+            }
+          } else {
+            roundsSinceGeminiRef.current = 0;
+            runGeminiQuery(geminiPayload, finalInitialConf, finalInitialPair);
           }
         }
       } catch (err) {
@@ -633,6 +826,106 @@ export default function App() {
       if (pollTimeout) clearTimeout(pollTimeout);
     };
   }, [licenseSession, selectedMode]);
+
+  const runGeminiQuery = (
+    payload: GeminiPredictionPayload,
+    fallbackConf: number,
+    fallbackPair: [number, number]
+  ) => {
+    setIsGeminiLoading(true);
+    requestGeminiLivePrediction(payload)
+      .then((insight) => {
+        setIsGeminiLoading(false);
+        setGeminiInsight(insight);
+
+        if (!insight.ok) {
+          if (
+            insight.errorCode === 'QUOTA_COOLDOWN' ||
+            insight.errorCode === 'RESOURCE_EXHAUSTED' ||
+            insight.errorCode === 'GEMINI_HIGH_DEMAND'
+          ) {
+            const waitSec = Math.min(Math.max(insight.retryAfterSec ?? 900, 60), 1800);
+            geminiCooldownUntilRef.current = Date.now() + waitSec * 1000;
+          }
+          return;
+        }
+
+        lastGeminiRegimeRef.current = payload.patternFeatures.regime;
+
+        if (
+          insight.prediction &&
+          lastPredictedIssueRef.current === payload.targetPeriod &&
+          !isTargetLockedRef.current
+        ) {
+          geminiPredByPeriodRef.current.set(payload.targetPeriod, insight.prediction);
+          const lvlNow = currentLossLevelRef.current;
+          const shouldAdoptGemini =
+            (insight.confidence ?? 0) >= 88 ||
+            insight.under2Priority === 'HIGH_SURESHOT' ||
+            (lvlNow >= 2 && (insight.confidence ?? 0) >= 84) ||
+            insight.prediction === payload.selfLearnedPrediction;
+
+          if (shouldAdoptGemini) {
+            const fusedSize = insight.prediction;
+            const fusedDigit = insight.singleDigit ?? payload.selfLearnedDigit;
+            const fusedConf = Math.max(fallbackConf, insight.confidence ?? fallbackConf);
+            const fusedPair: [number, number] =
+              fusedSize === payload.selfLearnedPrediction
+                ? fallbackPair
+                : payload.isK3
+                ? fusedSize === 'BIG'
+                  ? [11, 13]
+                  : [8, 9]
+                : fusedSize === 'BIG'
+                ? [6, 7]
+                : [2, 3];
+            const modelTag = insight.model?.includes('flash-lite') ? 'Gemini-Lite' : 'Gemini-4';
+            const fusedRule = `${modelTag} + SelfLearn (${
+              insight.detectedPattern || payload.patternFeatures.regime
+            })`;
+
+            const updatedRecord = {
+              pred: fusedSize,
+              predDigit: fusedDigit,
+              singleJackpotDigit: fusedDigit,
+              predNumbers: fusedPair,
+              conf: fusedConf,
+              rule: fusedRule,
+              lossLevel: lvlNow,
+              period: payload.targetPeriod,
+            };
+
+            lastActivePredictionRef.current = updatedRecord;
+            predictionHistoryMap.current.set(payload.targetPeriod, updatedRecord);
+
+            setCurrentPrediction((prev) =>
+              prev.period === payload.targetPeriod
+                ? {
+                    ...prev,
+                    prediction: fusedSize,
+                    predictedDigit: fusedDigit,
+                    singleJackpotDigit: fusedDigit,
+                    singleJackpotConfidence: fusedConf,
+                    predictedNumbers: fusedPair,
+                    confidence: fusedConf,
+                    rule: fusedRule,
+                  }
+                : prev
+            );
+          }
+        }
+      })
+      .catch(() => {
+        setIsGeminiLoading(false);
+      });
+  };
+
+  const handleAskGeminiNow = () => {
+    if (isGeminiLoading || !lastGeminiPayloadRef.current) return;
+    geminiCooldownUntilRef.current = 0;
+    const { payload, finalInitialConf, finalInitialPair } = lastGeminiPayloadRef.current;
+    runGeminiQuery(payload, finalInitialConf, finalInitialPair);
+  };
 
   return (
     <div className="relative w-full min-h-[100dvh] overflow-x-hidden bg-[#070b14] font-sans text-slate-100 select-none">
@@ -680,6 +973,10 @@ export default function App() {
             onResetStats={handleResetStats}
             onResetTargetRun={handleResetTargetRun}
             isTargetLocked={isTargetLocked || stats.targetWins >= 10}
+            geminiInsight={geminiInsight}
+            isGeminiLoading={isGeminiLoading}
+            selfLearningState={selfLearningState}
+            onAskGeminiNow={handleAskGeminiNow}
           />
         </div>
       )}

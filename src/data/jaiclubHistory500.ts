@@ -1,3 +1,5 @@
+import { KURMA_HISTORY_20261127 } from './kurmaHistory20261127';
+
 export interface JaiClubDrawRecord {
   period: string;
   number: number;
@@ -5,7 +7,7 @@ export interface JaiClubDrawRecord {
   color: string;
 }
 
-export const JAICLUB_HISTORY_500: JaiClubDrawRecord[] = [
+const JAICLUB_HISTORY_500_BASE: JaiClubDrawRecord[] = [
   {
     "period": "20261125100020372",
     "number": 9,
@@ -3001,3 +3003,30 @@ export const JAICLUB_HISTORY_500: JaiClubDrawRecord[] = [
     "color": "Green"
   }
 ];
+
+function mergeHistoricalBatches(
+  ...batches: JaiClubDrawRecord[][]
+): JaiClubDrawRecord[] {
+  const byPeriod = new Map<string, JaiClubDrawRecord>();
+  for (const batch of batches) {
+    for (const item of batch) {
+      if (item.period && !byPeriod.has(item.period)) {
+        byPeriod.set(item.period, item);
+      }
+    }
+  }
+  return Array.from(byPeriod.values()).sort((a, b) => {
+    try {
+      const ba = BigInt(a.period.replace(/\D/g, '') || '0');
+      const bb = BigInt(b.period.replace(/\D/g, '') || '0');
+      return bb > ba ? 1 : bb < ba ? -1 : 0;
+    } catch {
+      return b.period.localeCompare(a.period);
+    }
+  });
+}
+
+export const JAICLUB_HISTORY_500: JaiClubDrawRecord[] = mergeHistoricalBatches(
+  KURMA_HISTORY_20261127,
+  JAICLUB_HISTORY_500_BASE
+);

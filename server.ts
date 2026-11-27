@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import crypto from 'crypto';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import { requireAuth, AuthRequest } from './src/middleware/auth.ts';
 import {
   ensureJaiClub500Seeded,
@@ -610,7 +611,7 @@ async function startServer() {
       // Merge stored Cloud SQL rounds (includes 500 JaiClub history + auto-saved live rounds)
       try {
         await ensureJaiClub500Seeded(logicalMode);
-        const storedRows = await getStoredDraws(logicalMode, 1000);
+        const storedRows = await getStoredDraws(logicalMode, 5000);
         for (const row of storedRows) {
           if (row.issueNumber && !drawHistoryCache[type].has(row.issueNumber)) {
             drawHistoryCache[type].set(row.issueNumber, {
@@ -636,8 +637,8 @@ async function startServer() {
         }
       });
 
-      const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 1000;
-      const returnList = allItems.slice(0, Math.min(limit, 1000));
+      const limit = req.query.limit ? parseInt(String(req.query.limit), 10) : 5000;
+      const returnList = allItems.slice(0, Math.min(limit, 5000));
 
       res.json({
         data: {
@@ -659,7 +660,7 @@ async function startServer() {
   app.get('/api/db/draws', requireAuth, async (req: AuthRequest, res) => {
     try {
       const gameMode = String(req.query.type || '1M').trim();
-      const limit = Math.min(parseInt(String(req.query.limit || '1000'), 10) || 1000, 1200);
+      const limit = Math.min(parseInt(String(req.query.limit || '2500'), 10) || 2500, 5000);
       const draws = await getStoredDraws(gameMode, limit);
       res.json({ draws, total: draws.length });
     } catch (err: any) {
@@ -788,6 +789,507 @@ async function startServer() {
     } catch (err: any) {
       console.error('GET /api/db/backtest failed:', err);
       res.status(500).json({ error: err.message || 'Failed to load backtest report' });
+    }
+  });
+
+  // =========================================================================
+  // 🧠 LIVE GEMINI 4 HYDROGEN (FREE) SELF-LEARNING AI LLM ENDPOINTS
+  // =========================================================================
+  const AI_MEMORY_FILE = path.resolve(DATA_DIR, 'ai_memory.json');
+  const GEMINI_FREE_MODEL = 'gemini-4-hydrogen';
+
+  interface ServerModeAiMemory {
+    totalTrainedRounds: number;
+    l1Wins: number;
+    l2Wins: number;
+    l3Wins: number;
+    lossesOverL3: number;
+    geminiWins: number;
+    geminiTotal: number;
+    recentLessons: Array<{
+      period: string;
+      regime: string;
+      level: number;
+      aiPred: string;
+      actualSize: string;
+      outcome: string;
+      lesson: string;
+      timestamp: number;
+    }>;
+  }
+
+  const aiMemoryByMode = new Map<string, ServerModeAiMemory>();
+
+  function getModeAiMemory(mode: string): ServerModeAiMemory {
+    const cleanMode = String(mode || '1M').slice(0, 20);
+    if (!aiMemoryByMode.has(cleanMode)) {
+      aiMemoryByMode.set(cleanMode, {
+        totalTrainedRounds: 0,
+        l1Wins: 0,
+        l2Wins: 0,
+        l3Wins: 0,
+        lossesOverL3: 0,
+        geminiWins: 0,
+        geminiTotal: 0,
+        recentLessons: [],
+      });
+    }
+    return aiMemoryByMode.get(cleanMode)!;
+  }
+
+  function loadAiMemory() {
+    ensureDataDir();
+    try {
+      if (fs.existsSync(AI_MEMORY_FILE)) {
+        const parsed = JSON.parse(fs.readFileSync(AI_MEMORY_FILE, 'utf-8'));
+        if (parsed && typeof parsed === 'object') {
+          for (const [k, v] of Object.entries(parsed)) {
+            if (v && typeof v === 'object') {
+              aiMemoryByMode.set(k, v as ServerModeAiMemory);
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore corrupt memory file and start clean
+    }
+  }
+
+  function saveAiMemory() {
+    try {
+      ensureDataDir();
+      const obj: Record<string, ServerModeAiMemory> = {};
+      for (const [k, v] of aiMemoryByMode.entries()) {
+        obj[k] = v;
+      }
+      fs.writeFileSync(AI_MEMORY_FILE, JSON.stringify(obj, null, 2), 'utf-8');
+    } catch {
+      // Non-fatal persistence error
+    }
+  }
+
+  loadAiMemory();
+
+  function buildAiStatusSnapshot(mode: string) {
+    const mem = getModeAiMemory(mode);
+    const cycles = mem.l1Wins + mem.l2Wins + mem.l3Wins + mem.lossesOverL3;
+    const u2Wins = mem.l1Wins + mem.l2Wins;
+    const u3Wins = u2Wins + mem.l3Wins;
+    return {
+      model: GEMINI_FREE_MODEL,
+      geminiConfigured: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim().length > 0),
+      totalTrainedRounds: mem.totalTrainedRounds,
+      l1Wins: mem.l1Wins,
+      l2Wins: mem.l2Wins,
+      l3Wins: mem.l3Wins,
+      lossesOverL3: mem.lossesOverL3,
+      under2Rate: cycles > 0 ? Math.round((u2Wins / cycles) * 100) : 0,
+      under3Rate: cycles > 0 ? Math.round((u3Wins / cycles) * 100) : 0,
+      geminiAccuracy: mem.geminiTotal > 0 ? Math.round((mem.geminiWins / mem.geminiTotal) * 100) : 0,
+      recentLessons: mem.recentLessons.slice(0, 10),
+    };
+  }
+
+  function getGeminiClient(): GoogleGenAI | null {
+    const apiKey = process.env.GEMINI_API_KEY?.trim();
+    if (!apiKey) return null;
+    return new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+  }
+
+  app.get('/api/ai/status', (req, res) => {
+    const mode = String(req.query.mode || '1M');
+    return res.json(buildAiStatusSnapshot(mode));
+  });
+
+  app.post('/api/ai/learn', (req, res) => {
+    try {
+      const {
+        gameMode,
+        period,
+        regime,
+        level,
+        aiPred,
+        geminiPred,
+        actualSize,
+        outcome,
+        lesson,
+      } = req.body || {};
+
+      if (!gameMode || !period || !actualSize) {
+        return res.status(400).json({ error: 'Missing required learning feedback fields' });
+      }
+
+      const mem = getModeAiMemory(String(gameMode));
+      const lvl = Number(level) || 1;
+      const won = outcome === 'WIN' || outcome === 'JACKPOT';
+
+      mem.totalTrainedRounds += 1;
+      if (won) {
+        if (lvl === 1) mem.l1Wins += 1;
+        else if (lvl === 2) mem.l2Wins += 1;
+        else mem.l3Wins += 1;
+      } else if (lvl >= 3) {
+        mem.lossesOverL3 += 1;
+      }
+
+      if (geminiPred === 'BIG' || geminiPred === 'SMALL') {
+        mem.geminiTotal += 1;
+        if (geminiPred === actualSize) {
+          mem.geminiWins += 1;
+        }
+      }
+
+      mem.recentLessons = [
+        {
+          period: String(period),
+          regime: String(regime || 'MIXED'),
+          level: lvl,
+          aiPred: String(aiPred || ''),
+          actualSize: String(actualSize),
+          outcome: String(outcome || 'LOSS'),
+          lesson: String(lesson || ''),
+          timestamp: Date.now(),
+        },
+        ...mem.recentLessons.filter((item) => item.period !== String(period)),
+      ].slice(0, 20);
+
+      saveAiMemory();
+      return res.json({ success: true, status: buildAiStatusSnapshot(String(gameMode)) });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || 'Failed to record AI learning feedback' });
+    }
+  });
+
+  const GEMINI_FREE_CANDIDATES = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'] as const;
+  const modelCooldownUntil = new Map<string, number>();
+
+  function parseRetryAfterSeconds(msg: string, fallbackSec: number): number {
+    const match = msg.match(/"retryDelay"\s*:\s*"(\d+)s"/i) || msg.match(/retry in\s+(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/i);
+    if (match) {
+      if (match[1] && !match[2] && !match[3] && msg.includes('retryDelay')) {
+        return Math.max(60, Math.min(86400, Number(match[1]) || fallbackSec));
+      }
+      const h = Number(match[1] || 0);
+      const m = Number(match[2] || 0);
+      const s = Number(match[3] || 0);
+      const total = h * 3600 + m * 60 + s;
+      if (total > 0) return Math.max(60, Math.min(86400, total));
+    }
+    return fallbackSec;
+  }
+
+  app.post('/api/ai/predict', async (req, res) => {
+    const startMs = Date.now();
+    try {
+      const body = req.body || {};
+      const gameMode = String(body.gameMode || '1M');
+      const targetPeriod = String(body.targetPeriod || '');
+      const currentLevel = Math.min(3, Math.max(1, Number(body.currentLevel) || 1));
+      const isK3 = Boolean(body.isK3);
+      const patternFeatures = body.patternFeatures || {};
+      const basePrediction = String(body.basePrediction || 'BIG');
+      const selfLearnedPrediction = String(body.selfLearnedPrediction || basePrediction);
+      const selfLearnedDigit = Number(body.selfLearnedDigit ?? (isK3 ? 11 : 6));
+      const selfLearnedReason = String(body.selfLearnedReason || '');
+      const userCalcDetail = body.userCalcDetail;
+      const backtestSummary = body.backtestSummary;
+      const clientLearning = body.selfLearningSummary || {};
+
+      if (!targetPeriod) {
+        return res.status(400).json({ error: 'targetPeriod is required', model: GEMINI_FREE_MODEL });
+      }
+
+      const ai = getGeminiClient();
+      if (!ai) {
+        return res.status(503).json({
+          error: 'GEMINI_API_KEY is not configured in Settings > Secrets.',
+          code: 'GEMINI_KEY_MISSING',
+          model: GEMINI_FREE_MODEL,
+        });
+      }
+
+      const now = Date.now();
+      const activeCandidates = GEMINI_FREE_CANDIDATES.filter(
+        (m) => now >= (modelCooldownUntil.get(m) || 0)
+      );
+
+      if (activeCandidates.length === 0) {
+        const earliestReset = Math.min(
+          ...GEMINI_FREE_CANDIDATES.map((m) => modelCooldownUntil.get(m) || now + 300000)
+        );
+        const retryAfterSec = Math.max(30, Math.ceil((earliestReset - now) / 1000));
+        return res.status(429).json({
+          error: `Free-tier Gemini quota reached; 19-Algo Quant + Self-Learning AI running smoothly (retry in ~${Math.ceil(retryAfterSec / 60)}m).`,
+          code: 'QUOTA_COOLDOWN',
+          retryAfterSec,
+          model: GEMINI_FREE_MODEL,
+        });
+      }
+
+      const serverMem = getModeAiMemory(gameMode);
+      const mergedLessons =
+        Array.isArray(clientLearning.recentLessons) && clientLearning.recentLessons.length > 0
+          ? clientLearning.recentLessons.slice(0, 8)
+          : serverMem.recentLessons.slice(0, 8);
+
+      const topStratsText = Array.isArray(backtestSummary?.topStrategies)
+        ? backtestSummary.topStrategies
+            .slice(0, 6)
+            .map(
+              (s: any, idx: number) =>
+                `${idx + 1}. ${s.name}: L1=${s.level1Accuracy}%, L2Rec=${s.l2RecoveryRate}%, L3Rec=${s.l3RecoveryRate}%, U3=${s.under3FixRate}%, Vote(L1=${s.nextVote}, L2=${s.nextL2Vote}, L3=${s.nextL3Vote})`
+            )
+            .join('\n')
+        : 'N/A';
+
+      const lessonsText =
+        mergedLessons.length > 0
+          ? mergedLessons
+              .map(
+                (l: any) =>
+                  `- Period ${l.period} [${l.regime} L${l.level}]: AI=${l.aiPred} vs Actual=${l.actualSize}(${l.actualNumber ?? '-'}) -> ${l.outcome}. ${l.lesson}`
+              )
+              .join('\n')
+          : 'No resolved rounds yet in this session — rely on 500-round backtest & empirical regime patterns.';
+
+      const digitProbsText = Array.isArray(backtestSummary?.digitProbabilities)
+        ? backtestSummary.digitProbabilities
+            .slice(0, 5)
+            .map((d: any) => `${d.digit}(${d.probability}%)`)
+            .join(', ')
+        : 'N/A';
+
+      const systemInstruction = `You are KHELV GAME PENEL's live Self-Learning WinGo Pattern & Quantitative AI Strategist.
+Your #1 objective is maximizing UNDER-2 LEVEL FIX WINS (winning on Level 1 or Level 2) and preventing Level-3+ bust losses across WinGo 30S, 1M, TRX_1M, and K3_1M.
+
+You are trained on ALL WinGo pattern archetypes, trend logic, size combinations, and calculation algorithms:
+1. DRAGON STREAK (3+ identical BIG or SMALL in a row): Never blindly fight a live 3+ Dragon streak on Level 2/3 unless recent empirical 3-gram & Markov-2 strongly confirm a reversal cut.
+2. ZIGZAG OSCILLATOR (1-1 alternation B-S-B-S): Follow clean alternation until a double-pair breaks it.
+3. DOUBLE-PAIR MIRROR (2-2 symmetry BB-SS-BB or BB-S->B): Detect pair symmetry and 1-cut snap-back.
+4. 3-WAY DIGITAL ROOT & 170K CALCULATIONS: Index (0+2), (7+9), and Target Period Last-3 (1st+3rd) roots combined with 170,000 multi-stride calculations.
+5. QUANTITATIVE BACKTEST ALGORITHMS: VMM-4, Digit-Gap Renewal Hazard, Exponential MWU Hedge, Causal Log-Odds Naive Bayes, 2nd-Order Markov Transition, Empirical Digit-Context Matrix, Autocorrelation Hurst Regime.
+6. ONLINE SELF-LEARNING FEEDBACK: Inspect the Recent Self-Learning Lessons and live BIG vs SMALL side win EMAs. Favor the winning empirical regime and top L2/L3 recovery strategies.
+
+Game Rules:
+- For WinGo (30S / 1M / TRX_1M): numbers 0,1,2,3,4 = SMALL; numbers 5,6,7,8,9 = BIG.
+- For K3_1M: sums 3..10 = SMALL; sums 11..18 = BIG.
+Keep analysisReason under 180 characters and selfLearningNote under 140 characters.`;
+
+      const prompt = `Analyze this live ${gameMode} round and produce the highest-accuracy Under-2 / Under-3 prediction:
+
+Target Period: ${targetPeriod}
+Current Recovery Level: LEVEL ${currentLevel} (1=Normal, 2=Must-Win Under-2 Target, 3=Hardlock Fix)
+Is K3 Mode: ${isK3}
+
+Live Pattern Signature:
+- Regime: ${patternFeatures.regime || 'MIXED'}
+- Current Streak: ${patternFeatures.streakLength || 1}x ${patternFeatures.streakSide || 'BIG'}
+- Last 20 Numbers (newest first): ${JSON.stringify(patternFeatures.last20Numbers || [])}
+- Last 20 Sizes (newest first): ${JSON.stringify(patternFeatures.last20Sizes || [])}
+- BIG% Windows: Last12=${patternFeatures.recent12BigPct ?? 50}%, Last35=${patternFeatures.recent35BigPct ?? 50}%, Last50=${patternFeatures.recent50BigPct ?? 50}%
+- 20-Round Flip Rate: ${patternFeatures.flipRate20 ?? 50}% | Chi-Square Z12: ${patternFeatures.chiZ12 ?? 0}
+
+3-Way Digital Root & 170K Calculation Engine:
+- Calc1 (i0+i2 root): ${userCalcDetail?.calc1?.root ?? '-'} -> ${userCalcDetail?.calc1?.vote ?? '-'}
+- Calc2 (i7+i9 root): ${userCalcDetail?.calc2?.root ?? '-'} -> ${userCalcDetail?.calc2?.vote ?? '-'}
+- Calc3 (PeriodLast3 root): ${userCalcDetail?.calc3?.root ?? '-'} -> ${userCalcDetail?.calc3?.vote ?? '-'}
+- 170K Ensemble: BIG=${userCalcDetail?.total170kCalculations?.bigVotes ?? 0} vs SMALL=${userCalcDetail?.total170kCalculations?.smallVotes ?? 0}
+- Base Consensus Call: ${basePrediction}
+- Deterministic Self-Learned Call: ${selfLearnedPrediction} (Digit ${selfLearnedDigit}) · ${selfLearnedReason}
+
+500-Round Live Backtest Top Strategies (${backtestSummary?.datasetSize ?? 500} rounds):
+- Best Strategy: ${backtestSummary?.bestStrategyName ?? 'N/A'} (L1 ${backtestSummary?.bestLevel1Accuracy ?? 0}%, U3 ${backtestSummary?.bestUnder3FixRate ?? 0}%)
+- Entry Signal: ${backtestSummary?.entrySignal ?? 'STRONG_ENTRY'} (${backtestSummary?.entryReason ?? ''})
+- Top Candidate Digits: ${digitProbsText}
+${topStratsText}
+
+Live Self-Learning Memory (${clientLearning.totalRoundsLearned ?? serverMem.totalTrainedRounds} learned rounds):
+- Live Side Accuracy EMA: BIG=${Math.round((clientLearning.bigAccEMA ?? 0.5) * 100)}%, SMALL=${Math.round((clientLearning.smallAccEMA ?? 0.5) * 100)}%
+- Live Under-2 Rate: ${clientLearning.under2WinRate ?? 0}% | Under-3 Rate: ${clientLearning.under3WinRate ?? 0}%
+Recent Lessons Learned:
+${lessonsText}`;
+
+      const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          prediction: {
+            type: Type.STRING,
+            description: 'Must be exactly BIG or SMALL',
+          },
+          singleDigit: {
+            type: Type.INTEGER,
+            description: isK3
+              ? 'Predicted K3 sum between 3 and 18 matching prediction size'
+              : 'Predicted single digit between 0 and 9 matching prediction size',
+          },
+          confidence: {
+            type: Type.INTEGER,
+            description: 'Calibrated confidence percentage between 75 and 99',
+          },
+          detectedPattern: {
+            type: Type.STRING,
+            description: 'Short name of detected pattern & aligned methods',
+          },
+          analysisReason: {
+            type: Type.STRING,
+            description: 'Concise reasoning combining pattern, trend, and top algorithms',
+          },
+          under2Priority: {
+            type: Type.STRING,
+            description: 'HIGH_SURESHOT, BALANCED, or CAUTION_WAIT',
+          },
+          selfLearningNote: {
+            type: Type.STRING,
+            description: 'How recent self-learning lessons influenced this decision',
+          },
+        },
+        required: [
+          'prediction',
+          'singleDigit',
+          'confidence',
+          'detectedPattern',
+          'analysisReason',
+          'under2Priority',
+          'selfLearningNote',
+        ],
+      };
+
+      let lastErr: any = null;
+      let usedModel: string = activeCandidates[0];
+      let rawText = '';
+
+      for (const candidateModel of activeCandidates) {
+        try {
+          usedModel = candidateModel;
+          const config: any = {
+            systemInstruction,
+            responseMimeType: 'application/json',
+            responseSchema,
+          };
+          if (candidateModel === 'gemini-4-hydrogen') {
+            config.thinkingConfig = { thinkingLevel: ThinkingLevel.LOW };
+          }
+          const response = await ai.models.generateContent({
+            model: candidateModel,
+            contents: prompt,
+            config,
+          });
+          rawText = (response.text ?? '').trim();
+          if (rawText) {
+            break;
+          }
+        } catch (err: any) {
+          lastErr = err;
+          const msg = String(err?.message || '');
+          const isQuota = msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED');
+          const isBusy = msg.includes('503') || msg.includes('UNAVAILABLE') || msg.toLowerCase().includes('high demand');
+          if (isQuota) {
+            const retrySec = parseRetryAfterSeconds(msg, 3600);
+            modelCooldownUntil.set(candidateModel, Date.now() + retrySec * 1000);
+            console.warn(`[AI] ${candidateModel} quota limit reached; cooling down ${retrySec}s and trying next free model if available.`);
+            continue;
+          }
+          if (isBusy) {
+            modelCooldownUntil.set(candidateModel, Date.now() + 90 * 1000);
+            console.warn(`[AI] ${candidateModel} busy (503); cooling down 90s.`);
+            continue;
+          }
+          throw err;
+        }
+      }
+
+      if (!rawText) {
+        if (lastErr) {
+          throw lastErr;
+        }
+        return res.status(502).json({
+          error: 'Gemini returned an empty prediction response.',
+          code: 'EMPTY_RESPONSE',
+          model: usedModel,
+        });
+      }
+
+      let parsed: any;
+      try {
+        parsed = JSON.parse(rawText);
+      } catch {
+        return res.status(502).json({
+          error: 'Gemini response could not be parsed as JSON.',
+          code: 'INVALID_JSON',
+          model: usedModel,
+        });
+      }
+
+      const predSize: 'BIG' | 'SMALL' =
+        String(parsed.prediction || '').toUpperCase().includes('SMALL') ? 'SMALL' : 'BIG';
+
+      let digit = Number(parsed.singleDigit);
+      if (isK3) {
+        if (predSize === 'BIG' && (Number.isNaN(digit) || digit < 11 || digit > 18)) digit = 11;
+        if (predSize === 'SMALL' && (Number.isNaN(digit) || digit < 3 || digit > 10)) digit = 9;
+      } else {
+        if (predSize === 'BIG' && (Number.isNaN(digit) || digit < 5 || digit > 9)) digit = 7;
+        if (predSize === 'SMALL' && (Number.isNaN(digit) || digit < 0 || digit > 4)) digit = 2;
+      }
+
+      const conf = Math.min(99, Math.max(75, Math.round(Number(parsed.confidence) || 92)));
+      const priorityRaw = String(parsed.under2Priority || 'BALANCED').toUpperCase();
+      const under2Priority =
+        priorityRaw === 'HIGH_SURESHOT' || priorityRaw === 'CAUTION_WAIT'
+          ? priorityRaw
+          : 'BALANCED';
+
+      return res.json({
+        model: usedModel,
+        prediction: predSize,
+        singleDigit: digit,
+        confidence: conf,
+        detectedPattern: String(parsed.detectedPattern || patternFeatures.regime || 'Consensus'),
+        analysisReason: String(parsed.analysisReason || selfLearnedReason),
+        under2Priority,
+        selfLearningNote: String(parsed.selfLearningNote || 'Calibrated with live round history'),
+        latencyMs: Date.now() - startMs,
+      });
+    } catch (err: any) {
+      const rawMsg = String(err?.message || 'Gemini AI prediction failed');
+      const isQuota = rawMsg.includes('429') || rawMsg.includes('RESOURCE_EXHAUSTED');
+      const isBusy = rawMsg.includes('503') || rawMsg.includes('UNAVAILABLE') || rawMsg.toLowerCase().includes('high demand');
+      const isAuth = rawMsg.includes('403') || rawMsg.includes('PERMISSION_DENIED') || rawMsg.includes('API_KEY_INVALID');
+      const status = isQuota ? 429 : isBusy ? 503 : isAuth ? 403 : 500;
+      const retryAfterSec = isQuota
+        ? parseRetryAfterSeconds(rawMsg, 1800)
+        : isBusy
+        ? 90
+        : undefined;
+      const cleanError = isQuota
+        ? 'Free-tier daily AI limit reached; 19-Algo Quant + Self-Learning AI active until quota resets.'
+        : isBusy
+        ? 'Gemini AI is temporarily busy (high demand); retrying automatically.'
+        : rawMsg;
+      if (status >= 500 && !isBusy) {
+        console.error('POST /api/ai/predict error:', rawMsg);
+      } else {
+        console.warn(`POST /api/ai/predict status ${status}: ${cleanError}`);
+      }
+      return res.status(status).json({
+        error: cleanError,
+        code: isQuota
+          ? 'RESOURCE_EXHAUSTED'
+          : isBusy
+          ? 'GEMINI_HIGH_DEMAND'
+          : isAuth
+          ? 'PERMISSION_DENIED'
+          : 'GEMINI_ERROR',
+        retryAfterSec,
+        model: GEMINI_FREE_MODEL,
+      });
     }
   });
 
