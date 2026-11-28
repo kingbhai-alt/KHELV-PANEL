@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { JujutsuTerminal } from './components/JujutsuTerminal';
 import { KeyGateModal } from './components/KeyGateModal';
 import { ModeSelectionModal } from './components/ModeSelectionModal';
+import { HackerBootSequence } from './components/HackerBootSequence';
 import {
   fetchLiveDrawHistory,
   mergeWith500Dataset,
@@ -52,6 +53,17 @@ import {
 export default function App() {
   const idTokenRef = useRef<string | null>(null);
 
+  // 🚀 0. 10-second hyper-premium hacker/decoding intro before Login (skips only on ?autostart=1)
+  const [introCompleted, setIntroCompleted] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('autostart') === '1';
+    } catch {
+      return false;
+    }
+  });
+
   // 🔐 1. Key authentication required every single time app opens/reloads
   const [licenseSession, setLicenseSession] = useState<LicenseSession | null>(null);
   const [keyGateError, setKeyGateError] = useState<string>('');
@@ -70,6 +82,8 @@ export default function App() {
     level1Wins: 0,
     level2Wins: 0,
     level3Wins: 0,
+    level4Wins: 0,
+    level5Wins: 0,
     currentLevel: 1,
     targetWins: 0,
     targetRunsCompleted: 0,
@@ -114,12 +128,12 @@ export default function App() {
   // 📜 4. Clean History: Starts empty on start/restart, loads only selected mode
   const [history, setHistory] = useState<HistoryLogRow[]>([]);
 
-  // Round Timer state
+  // Round Timer & Prediction Decode Trigger state (Unlimited Wins — zero 10-win cap)
   const [remainingSeconds, setRemainingSeconds] = useState<number>(60);
   const [totalRoundSeconds, setTotalRoundSeconds] = useState<number>(60);
   const [isApiLive, setIsApiLive] = useState<boolean>(true);
-  const [isTargetLocked, setIsTargetLocked] = useState<boolean>(false);
-  const isTargetLockedRef = useRef<boolean>(false);
+  const [predictionDecodeKey, setPredictionDecodeKey] = useState<string>('');
+  const [celebrationResult, setCelebrationResult] = useState<HistoryLogRow | null>(null);
 
   // Tracking refs
   const lastProcessedIssueRef = useRef<string>('');
@@ -222,9 +236,9 @@ export default function App() {
 
   const handleLogoutKey = () => {
     clearSession();
-    isTargetLockedRef.current = false;
-    setIsTargetLocked(false);
     currentLossLevelRef.current = 1;
+    setPredictionDecodeKey('');
+    setCelebrationResult(null);
     setLicenseSession(null);
     setSelectedMode(null);
     setHistory([]);
@@ -233,9 +247,9 @@ export default function App() {
 
   // When user switches mode, clear history and fetch ONLY that mode's live data
   const handleSwitchMode = (mode: WinGoMode) => {
-    isTargetLockedRef.current = false;
-    setIsTargetLocked(false);
     currentLossLevelRef.current = 1;
+    setPredictionDecodeKey('');
+    setCelebrationResult(null);
     setSelectedMode(mode);
     setHistory([]);
     lastProcessedIssueRef.current = '';
@@ -259,6 +273,8 @@ export default function App() {
       level1Wins: 0,
       level2Wins: 0,
       level3Wins: 0,
+      level4Wins: 0,
+      level5Wins: 0,
       currentLevel: 1,
       targetWins: 0,
       targetRunsCompleted: 0,
@@ -267,8 +283,6 @@ export default function App() {
   };
 
   const handleResetStats = () => {
-    isTargetLockedRef.current = false;
-    setIsTargetLocked(false);
     currentLossLevelRef.current = 1;
     setStats({
       wins: 0,
@@ -280,18 +294,18 @@ export default function App() {
       level1Wins: 0,
       level2Wins: 0,
       level3Wins: 0,
+      level4Wins: 0,
+      level5Wins: 0,
       currentLevel: 1,
       targetWins: 0,
       targetRunsCompleted: 0,
       singleJackpotHits: 0,
     });
     setHistory([]);
+    setCelebrationResult(null);
   };
 
   const handleResetTargetRun = () => {
-    isTargetLockedRef.current = false;
-    setIsTargetLocked(false);
-    lastPredictedIssueRef.current = '';
     setStats((prev) => ({
       ...prev,
       targetWins: 0,
@@ -377,6 +391,8 @@ export default function App() {
             level1Wins: 0,
             level2Wins: 0,
             level3Wins: 0,
+            level4Wins: 0,
+            level5Wins: 0,
             currentLevel: 1,
             targetWins: 0,
             targetRunsCompleted: 0,
@@ -419,7 +435,7 @@ export default function App() {
           let confForThisRound = 92;
           let ruleForThisRound = '100K+ Consensus Cluster';
 
-          let levelAtPred: 1 | 2 | 3 = 1;
+          let levelAtPred: 1 | 2 | 3 | 4 | 5 = 1;
           let isSingleHit = false;
 
           if (savedPredData) {
@@ -428,7 +444,7 @@ export default function App() {
             predNumbersForThisRound = savedPredData.predNumbers;
             confForThisRound = savedPredData.conf;
             ruleForThisRound = savedPredData.rule;
-            levelAtPred = (savedPredData.lossLevel as 1 | 2 | 3) || 1;
+            levelAtPred = (Math.min(5, Math.max(1, savedPredData.lossLevel || 1)) as 1 | 2 | 3 | 4 | 5);
             isSingleHit = savedPredData.singleJackpotDigit === num;
 
             lastActualDrawnRef.current = num;
@@ -446,7 +462,7 @@ export default function App() {
             } else {
               // 100% TRUTHFUL: When prediction is SMALL and actual is BIG, it is LOSS! Never fake a WIN!
               outcome = 'LOSS';
-              currentLossLevelRef.current = currentLossLevelRef.current >= 3 ? 1 : (currentLossLevelRef.current + 1);
+              currentLossLevelRef.current = currentLossLevelRef.current >= 5 ? 1 : (currentLossLevelRef.current + 1);
               setPreviousWasLoss(true);
             }
 
@@ -470,27 +486,23 @@ export default function App() {
               let newL1 = prev.level1Wins || 0;
               let newL2 = prev.level2Wins || 0;
               let newL3 = prev.level3Wins || 0;
+              let newL4 = prev.level4Wins || 0;
+              let newL5 = prev.level5Wins || 0;
               if (isWon) {
                 if (levelAtPred === 1) newL1++;
                 else if (levelAtPred === 2) newL2++;
-                else newL3++;
+                else if (levelAtPred === 3) newL3++;
+                else if (levelAtPred === 4) newL4++;
+                else newL5++;
               }
 
-              // Target 10 Wins Tracking:
+              // Unlimited Continuous Wins Tracking (zero cap / zero lockout)
               let newTargetWins = prev.targetWins || 0;
               let newRunsCompleted = prev.targetRunsCompleted || 0;
               if (isWon) {
-                if (newTargetWins >= 10) {
-                  newTargetWins = 10;
-                  isTargetLockedRef.current = true;
-                  setIsTargetLocked(true);
-                } else {
-                  newTargetWins++;
-                  if (newTargetWins >= 10) {
-                    newRunsCompleted++;
-                    isTargetLockedRef.current = true;
-                    setIsTargetLocked(true);
-                  }
+                newTargetWins++;
+                if (newTargetWins % 10 === 0) {
+                  newRunsCompleted++;
                 }
               }
 
@@ -504,7 +516,9 @@ export default function App() {
                 level1Wins: newL1,
                 level2Wins: newL2,
                 level3Wins: newL3,
-                currentLevel: currentLossLevelRef.current as (1 | 2 | 3),
+                level4Wins: newL4,
+                level5Wins: newL5,
+                currentLevel: (Math.min(5, Math.max(1, currentLossLevelRef.current)) as 1 | 2 | 3 | 4 | 5),
                 targetWins: newTargetWins,
                 targetRunsCompleted: newRunsCompleted,
                 singleJackpotHits: (prev.singleJackpotHits || 0) + (isSingleHit ? 1 : 0),
@@ -540,6 +554,9 @@ export default function App() {
           };
 
           setHistory((prev) => [logRow, ...prev]);
+          if (savedPredData) {
+            setCelebrationResult(logRow);
+          }
 
           // Update local DB prediction cache & auto-save resolved outcome into Cloud SQL database
           if (savedPredData) {
@@ -615,12 +632,7 @@ export default function App() {
           }
         }
 
-        // If target 10 wins is accomplished, freeze next prediction until user reopens!
-        if (isTargetLockedRef.current) {
-          return;
-        }
-
-        // Calculate next prediction
+        // Calculate next prediction continuously (Unlimited Mode)
         let nextIssueNum: string;
         try {
           const currentBig = BigInt(latestIssue.replace(/\D/g, '') || '0');
@@ -730,6 +742,7 @@ export default function App() {
             confidence: finalInitialConf,
             rule: finalInitialRule,
           });
+          setPredictionDecodeKey(`${selectedMode}-${nextIssueNum}`);
 
           if (token) {
             savePredictionToDatabase(token, {
@@ -854,16 +867,18 @@ export default function App() {
 
         if (
           insight.prediction &&
-          lastPredictedIssueRef.current === payload.targetPeriod &&
-          !isTargetLockedRef.current
+          lastPredictedIssueRef.current === payload.targetPeriod
         ) {
           geminiPredByPeriodRef.current.set(payload.targetPeriod, insight.prediction);
           const lvlNow = currentLossLevelRef.current;
+          const geminiAgreed = insight.prediction === payload.selfLearnedPrediction;
+          const quantConsensusWeak =
+            fallbackConf < 91 &&
+            payload.backtestSummary?.entrySignal !== 'SURESHOT_LOCK';
           const shouldAdoptGemini =
-            (insight.confidence ?? 0) >= 88 ||
-            insight.under2Priority === 'HIGH_SURESHOT' ||
-            (lvlNow >= 2 && (insight.confidence ?? 0) >= 84) ||
-            insight.prediction === payload.selfLearnedPrediction;
+            geminiAgreed ||
+            (lvlNow >= 2 && (insight.confidence ?? 0) >= 93) ||
+            (quantConsensusWeak && (insight.confidence ?? 0) >= 94);
 
           if (shouldAdoptGemini) {
             const fusedSize = insight.prediction;
@@ -928,9 +943,17 @@ export default function App() {
   };
 
   return (
-    <div className="relative w-full min-h-[100dvh] overflow-x-hidden bg-[#070b14] font-sans text-slate-100 select-none">
-      {/* 🔐 STEP 1: MANDATORY KEY AUTHENTICATION (ASKED EVERY TIME ON OPEN) */}
-      {!licenseSession && (
+    <div className="relative w-full min-h-[100dvh] overflow-x-hidden bg-[#040711] text-slate-100 select-none">
+      {/* 🚀 STEP 0: 10-SECOND HACKER & QUANTUM DECODING BOOT SEQUENCE */}
+      {!introCompleted && (
+        <HackerBootSequence
+          durationMs={10000}
+          onComplete={() => setIntroCompleted(true)}
+        />
+      )}
+
+      {/* 🔐 STEP 1: MANDATORY KEY AUTHENTICATION (AFTER 10s DECODING BOOT) */}
+      {introCompleted && !licenseSession && (
         <KeyGateModal
           initialError={keyGateError}
           onUnlocked={(session) => {
@@ -940,8 +963,8 @@ export default function App() {
         />
       )}
 
-      {/* 🎮 STEP 2: AJAY 100K+ BYPASS INJECTION & WINGO MODE SELECTION */}
-      {licenseSession && !selectedMode && (
+      {/* 🎮 STEP 2: WINGO MODE SELECTION */}
+      {introCompleted && licenseSession && !selectedMode && (
         <ModeSelectionModal
           licenseSession={licenseSession}
           onSelectMode={(mode) => {
@@ -950,8 +973,8 @@ export default function App() {
         />
       )}
 
-      {/* 💻 STEP 3: MAIN EXACT DASHBOARD & D3 PATTERN ANALYSIS (AJAY CONSENSUS) */}
-      {licenseSession && selectedMode && (
+      {/* 💻 STEP 3: UNLIMITED COMMAND DESK & 4s PREDICTION DECODER */}
+      {introCompleted && licenseSession && selectedMode && (
         <div className="relative z-10 w-full min-h-[100dvh] flex flex-col">
           <JujutsuTerminal
             stats={stats}
@@ -972,11 +995,13 @@ export default function App() {
             totalRoundSeconds={totalRoundSeconds}
             onResetStats={handleResetStats}
             onResetTargetRun={handleResetTargetRun}
-            isTargetLocked={isTargetLocked || stats.targetWins >= 10}
+            decodeKey={predictionDecodeKey}
             geminiInsight={geminiInsight}
             isGeminiLoading={isGeminiLoading}
             selfLearningState={selfLearningState}
             onAskGeminiNow={handleAskGeminiNow}
+            celebrationResult={celebrationResult}
+            onDismissCelebration={() => setCelebrationResult(null)}
           />
         </div>
       )}

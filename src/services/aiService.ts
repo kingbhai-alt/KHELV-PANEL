@@ -112,7 +112,7 @@ export async function requestGeminiLivePrediction(
     }
 
     const data = await res.json();
-    if (!res.ok) {
+    if (!res.ok || data.ok === false || data.fallbackActive) {
       return {
         ok: false,
         model: data.model || 'gemini-4-hydrogen',

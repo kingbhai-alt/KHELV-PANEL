@@ -1,4 +1,5 @@
 import { KURMA_HISTORY_20261127 } from './kurmaHistory20261127';
+import { LIVE_BATCH_20261127_NIGHT } from './liveBatch20261127Night';
 
 export interface JaiClubDrawRecord {
   period: string;
@@ -3027,6 +3028,7 @@ function mergeHistoricalBatches(
 }
 
 export const JAICLUB_HISTORY_500: JaiClubDrawRecord[] = mergeHistoricalBatches(
+  LIVE_BATCH_20261127_NIGHT,
   KURMA_HISTORY_20261127,
   JAICLUB_HISTORY_500_BASE
 );

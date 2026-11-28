@@ -1,0 +1,445 @@
+{
+  "30S": {
+    "totalTrainedRounds": 46,
+    "l1Wins": 10,
+    "l2Wins": 8,
+    "l3Wins": 4,
+    "lossesOverL3": 2,
+    "geminiWins": 11,
+    "geminiTotal": 23,
+    "recentLessons": [
+      {
+        "period": "20261128100051635",
+        "regime": "CHOPPY_MIXED",
+        "level": 2,
+        "aiPred": "BIG",
+        "actualSize": "BIG",
+        "outcome": "WIN",
+        "lesson": "L2 WIN on CHOPPY_MIXED: AI BIG matched BIG(5)",
+        "timestamp": 1795873049214
+      },
+      {
+        "period": "20261128100051634",
+        "regime": "PAIR_2_2",
+        "level": 1,
+        "aiPred": "SMALL",
+        "actualSize": "BIG",
+        "outcome": "LOSS",
+        "lesson": "L1 MISS on PAIR_2_2: AI called SMALL, actual BIG(6) -> Adjust PAIR_2_2 weight",
+        "timestamp": 1795873020216
+      },
+      {
+        "period": "20261128100051633",
+        "regime": "ONE_CUT_AFTER_DRAGON",
+        "level": 3,
+        "aiPred": "BIG",
+        "actualSize": "SMALL",
+        "outcome": "LOSS",
+        "lesson": "L3 MISS on ONE_CUT_AFTER_DRAGON: AI called BIG, actual SMALL(3) -> Adjust ONE_CUT_AFTER_DRAGON weight",
+        "timestamp": 1795872990481
+      },
+      {
+        "period": "20261128100051632",
+        "regime": "DRAGON_3+",
+        "level": 2,
+        "aiPred": "BIG",
+        "actualSize": "SMALL",
+        "outcome": "LOSS",
+        "lesson": "L2 MISS on DRAGON_3+: AI called BIG, actual SMALL(0) -> Adjust DRAGON_3+ weight",
+        "timestamp": 1795872961496
+      },
+      {
+        "period": "20261128100051631",
+        "regime": "DRAGON_3+",
+        "level": 1,
+        "aiPred": "SMALL",
+        "actualSize": "BIG",
+        "outcome": "LOSS",
+        "lesson": "L1 MISS on DRAGON_3+: AI called SMALL, actual BIG(8) -> Adjust DRAGON_3+ weight",
+        "timestamp": 1795872930466
+      },
+      {
+        "period": "20261128100051613",
+        "regime": "PAIR_2_2",
+        "level": 2,
+        "aiPred": "SMALL",
+        "actualSize": "BIG",
+        "outcome": "LOSS",
+        "lesson": "L2 MISS on PAIR_2_2: AI called SMALL, actual BIG(9) -> Adjust PAIR_2_2 weight",
+        "timestamp": 1795872387537
+      },
+      {
+        "period": "20261128100051612",
+        "regime": "ONE_CUT_AFTER_DRAGON",
+        "level": 1,
+        "aiPred": "BIG",
+        "actualSize": "SMALL",
+        "outcome": "LOSS",
+        "lesson": "L1 MISS on ONE_CUT_AFTER_DRAGON: AI called BIG, actual SMALL(4) -> Adjust ONE_CUT_AFTER_DRAGON weight",
+        "timestamp": 1795872359398
+      },
+      {
+        "period": "20261128100051471",
+        "regime": "ZIGZAG_4+",
+        "level": 1,
+        "aiPred": "BIG",
+        "actualSize": "BIG",
+        "outcome": "WIN",
+        "lesson": "L1 WIN on ZIGZAG_4+: AI BIG matched BIG(7)",
+        "timestamp": 1795868129118
+      },
+      {
+        "period": "20261128100051470",
+        "regime": "ZIGZAG_4+",
+        "level": 1,
+        "aiPred": "SMALL",
+        "actualSize": "SMALL",
+        "outcome": "WIN",
+        "lesson": "L1 WIN on ZIGZAG_4+: AI SMALL matched SMALL(0)",
+        "timestamp": 1795868099034
+      },
+      {
+        "period": "20261128100051469",
+        "regime": "ZIGZAG_4+",
+        "level": 1,
+        "aiPred": "BIG",
+        "actualSize": "BIG",
+        "outcome": "WIN",
+        "lesson": "L1 WIN on ZIGZAG_4+: AI BIG matched BIG(9)",
+        "timestamp": 1795868074177
+      },
+      {
+        "period": "20261128100051468",
+        "regime": "ZIGZAG_4+",
+        "level": 1,
+        "aiPred": "SMALL",
+        "actualSize": "SMALL",
+        "outcome": "WIN",
+        "lesson": "L1 WIN on ZIGZAG_4+: AI SMALL matched SMALL(4)",
+        "timestamp": 1795868039812
+      },
+      {
+        "period": "20261128100051467",
+        "regime": "ZIGZAG_4+",
+        "level": 2,
+        "aiPred": "BIG",
+        "actualSize": "BIG",
+        "outcome": "WIN",
+        "lesson": "L2 WIN on ZIGZAG_4+: AI BIG matched BIG(8)",
+        "timestamp": 1795868012757
+      },
+      {
+        "period": "20261128100051466",
+        "regime": "ZIGZAG_4+",
+        "level": 1,
+        "aiPred": "BIG",
+        "actualSize": "SMALL",
+        "outcome": "LOSS",
+        "lesson": "L1 MISS on ZIGZAG_4+: AI called BIG, actual SMALL(2) -> Adjust ZIGZAG_4+ weight",
+        "timestamp": 1795867979018
+      },
+      {
+        "period": "20261128100051464",
+        "regime": "CHOPPY_MIXED",
+        "level": 2,
+        "aiPred": "SMALL",
+        "actualSize": "SMALL",
+        "outcome": "JACKPOT",
+        "lesson": "L2 WIN on CHOPPY_MIXED: AI SMALL matched SMALL(2)",
+        "timestamp": 1795867922991
+      },
+      {
+        "period": "20261128100051463",
+        "regime": "ONE_CUT_AFTER_DRAGON",
+        "level": 1,
+        "aiPred": "SMALL",
+        "actualSize": "BIG",
+        "outcome": "LOSS",
+        "lesson": "L1 MISS on ONE_CUT_AFTER_DRAGON: AI called SMALL, actual BIG(9) -> Adjust ONE_CUT_AFTER_DRAGON weight",
+        "timestamp": 1795867888396
+      },
+      {
+        "period": "20261128100051462",
+        "regime": "DRAGON_3+",
+        "level": 2,
+        "aiPred": "SMALL",
+        "actualSize": "SMALL",
+        "outcome": "JACKPOT",
+        "lesson": "L2 WIN on DRAGON_3+: AI SMALL matched SMALL(0)",
+        "timestamp": 1795867859985
+      },
+      {
+        "period": "20261128100051461",
+        "regime": "DRAGON_3+",
+        "level": 1,
+        "aiPred": "SMALL",
+        "actualSize": "BIG",
+        "outcome": "LOSS",
+        "lesson": "L1 MISS on DRAGON_3+: AI called SMALL, actual BIG(8) -> Adjust DRAGON_3+ weight",
+        "timestamp": 1795867828279
+      },
+      {
+        "period": "20261128100051460",
+        "regime": "PAIR_2_2",
+        "level": 3,
+        "aiPred": "BIG",
+        "actualSize": "BIG",
+        "outcome": "JACKPOT",
+        "lesson": "L3 WIN on PAIR_2_2: AI BIG matched BIG(9)",
+        "timestamp": 1795867798260
+      },
+      {
+        "period": "20261128100051459",
+        "regime": "CHOPPY_MIXED",
+        "level": 2,
+        "aiPred": "SMALL",
+        "actualSize": "BIG",
+        "outcome": "LOSS",
+        "lesson": "L2 MISS on CHOPPY_MIXED: AI called SMALL, actual BIG(9) -> Adjust CHOPPY_MIXED weight",
+        "timestamp": 1795867770036
+      },
+      {
+        "period": "20261128100051458",
+        "regime": "CHOPPY_MIXED",
+        "level": 1,
+        "aiPred": "SMALL",
+        "actualSize": "BIG",
+        "outcome": "LOSS",
+        "lesson": "L1 MISS on CHOPPY_MIXED: AI called SMALL, actual BIG(8) -> Adjust CHOPPY_MIXED weight",
+        "timestamp": 1795867740120
+      }
+    ]
+  },
+  "1M": {
+    "totalTrainedRounds": 15,
+    "l1Wins": 4,
+    "l2Wins": 1,
+    "l3Wins": 2,
+    "lossesOverL3": 0,
+    "geminiWins": 3,
+    "geminiTotal": 5,
+    "recentLessons": [
+      {
+        "period": "20261128100010823",
+        "regime": "PAIR_2_2",
+        "level": 1,
+        "aiPred": "SMALL",
+        "actualSize": "BIG",
+        "outcome": "LOSS",
+        "lesson": "L1 MISS on PAIR_2_2: AI called SMALL, actual BIG(5) -> Adjust PAIR_2_2 weight",
+        "timestamp": 1795873377869
+      },
+      {
+        "period": "20261128100010774",
+        "regime": "CHOPPY_MIXED",
+        "level": 3,
+        "aiPred": "BIG",
+        "actualSize": "BIG",
+        "outcome": "JACKPOT",
+        "lesson": "L3 WIN on CHOPPY_MIXED: AI BIG matched BIG(5)",
+        "timestamp": 1795870438113
+      },
+      {
+        "period": "20261128100010773",
+        "regime": "ZIGZAG_4+",
+        "level": 1,
+        "aiPred": "SMALL",
+        "actualSize": "BIG",
+        "outcome": "LOSS",
+        "lesson": "L1 MISS on ZIGZAG_4+: AI called SMALL, actual BIG(6) -> Adjust ZIGZAG_4+ weight",
+        "timestamp": 1795870380476
+      },
+      {
+        "period": "20261128100010772",
+        "regime": "CHOPPY_MIXED",
+        "level": 1,
+        "aiPred": "SMALL",
+        "actualSize": "BIG",
+        "outcome": "LOSS",
+        "lesson": "L1 MISS on CHOPPY_MIXED: AI called SMALL, actual BIG(6) -> Adjust CHOPPY_MIXED weight",
+        "timestamp": 1795870318137
+      },
+      {
+        "period": "20261128100010771",
+        "regime": "ONE_CUT_AFTER_DRAGON",
+        "level": 2,
+        "aiPred": "SMALL",
+        "actualSize": "SMALL",
+        "outcome": "WIN",
+        "lesson": "L2 WIN on ONE_CUT_AFTER_DRAGON: AI SMALL matched SMALL(2)",
+        "timestamp": 1795870258125
+      },
+      {
+        "period": "20261128100010770",
+        "regime": "DRAGON_3+",
+        "level": 1,
+        "aiPred": "SMALL",
+        "actualSize": "BIG",
+        "outcome": "LOSS",
+        "lesson": "L1 MISS on DRAGON_3+: AI called SMALL, actual BIG(5) -> Adjust DRAGON_3+ weight",
+        "timestamp": 1795870198076
+      },
+      {
+        "period": "20261128100010769",
+        "regime": "DRAGON_3+",
+        "level": 1,
+        "aiPred": "SMALL",
+        "actualSize": "SMALL",
+        "outcome": "JACKPOT",
+        "lesson": "L1 WIN on DRAGON_3+: AI SMALL matched SMALL(1)",
+        "timestamp": 1795870138136
+      },
+      {
+        "period": "20261128100010768",
+        "regime": "DRAGON_3+",
+        "level": 1,
+        "aiPred": "SMALL",
+        "actualSize": "SMALL",
+        "outcome": "WIN",
+        "lesson": "L1 WIN on DRAGON_3+: AI SMALL matched SMALL(4)",
+        "timestamp": 1795870078163
+      },
+      {
+        "period": "20261128100010767",
+        "regime": "PAIR_2_2",
+        "level": 1,
+        "aiPred": "SMALL",
+        "actualSize": "SMALL",
+        "outcome": "WIN",
+        "lesson": "L1 WIN on PAIR_2_2: AI SMALL matched SMALL(0)",
+        "timestamp": 1795870018084
+      },
+      {
+        "period": "20261128100010766",
+        "regime": "ONE_CUT_AFTER_DRAGON",
+        "level": 3,
+        "aiPred": "SMALL",
+        "actualSize": "SMALL",
+        "outcome": "WIN",
+        "lesson": "L3 WIN on ONE_CUT_AFTER_DRAGON: AI SMALL matched SMALL(0)",
+        "timestamp": 1795869960321
+      },
+      {
+        "period": "20261128100010765",
+        "regime": "DRAGON_3+",
+        "level": 2,
+        "aiPred": "BIG",
+        "actualSize": "SMALL",
+        "outcome": "LOSS",
+        "lesson": "L2 MISS on DRAGON_3+: AI called BIG, actual SMALL(1) -> Adjust DRAGON_3+ weight",
+        "timestamp": 1795869900112
+      },
+      {
+        "period": "20261128100010764",
+        "regime": "DRAGON_3+",
+        "level": 1,
+        "aiPred": "SMALL",
+        "actualSize": "BIG",
+        "outcome": "LOSS",
+        "lesson": "L1 MISS on DRAGON_3+: AI called SMALL, actual BIG(6) -> Adjust DRAGON_3+ weight",
+        "timestamp": 1795869840256
+      },
+      {
+        "period": "20261128100010730",
+        "regime": "ONE_CUT_AFTER_DRAGON",
+        "level": 1,
+        "aiPred": "SMALL",
+        "actualSize": "SMALL",
+        "outcome": "WIN",
+        "lesson": "L1 WIN on ONE_CUT_AFTER_DRAGON: AI SMALL matched SMALL(1)",
+        "timestamp": 1795867798927
+      }
+    ]
+  },
+  "K3_1M": {
+    "totalTrainedRounds": 8,
+    "l1Wins": 0,
+    "l2Wins": 2,
+    "l3Wins": 1,
+    "lossesOverL3": 0,
+    "geminiWins": 1,
+    "geminiTotal": 2,
+    "recentLessons": [
+      {
+        "period": "20261128101010823",
+        "regime": "CHOPPY_MIXED",
+        "level": 1,
+        "aiPred": "BIG",
+        "actualSize": "SMALL",
+        "outcome": "LOSS",
+        "lesson": "L1 MISS on CHOPPY_MIXED: AI called BIG, actual SMALL(8) -> Adjust CHOPPY_MIXED weight",
+        "timestamp": 1795873377751
+      },
+      {
+        "period": "20261128101010822",
+        "regime": "CHOPPY_MIXED",
+        "level": 3,
+        "aiPred": "BIG",
+        "actualSize": "BIG",
+        "outcome": "WIN",
+        "lesson": "L3 WIN on CHOPPY_MIXED: AI BIG matched BIG(13)",
+        "timestamp": 1795873318012
+      },
+      {
+        "period": "20261128101010821",
+        "regime": "ONE_CUT_AFTER_DRAGON",
+        "level": 2,
+        "aiPred": "SMALL",
+        "actualSize": "BIG",
+        "outcome": "LOSS",
+        "lesson": "L2 MISS on ONE_CUT_AFTER_DRAGON: AI called SMALL, actual BIG(13) -> Adjust ONE_CUT_AFTER_DRAGON weight",
+        "timestamp": 1795873258800
+      },
+      {
+        "period": "20261128101010820",
+        "regime": "DRAGON_3+",
+        "level": 1,
+        "aiPred": "BIG",
+        "actualSize": "SMALL",
+        "outcome": "LOSS",
+        "lesson": "L1 MISS on DRAGON_3+: AI called BIG, actual SMALL(10) -> Adjust DRAGON_3+ weight",
+        "timestamp": 1795873199911
+      },
+      {
+        "period": "20261128101010819",
+        "regime": "CHOPPY_MIXED",
+        "level": 2,
+        "aiPred": "BIG",
+        "actualSize": "BIG",
+        "outcome": "WIN",
+        "lesson": "L2 WIN on CHOPPY_MIXED: AI BIG matched BIG(11)",
+        "timestamp": 1795873138534
+      },
+      {
+        "period": "20261128101010818",
+        "regime": "CHOPPY_MIXED",
+        "level": 1,
+        "aiPred": "SMALL",
+        "actualSize": "BIG",
+        "outcome": "LOSS",
+        "lesson": "L1 MISS on CHOPPY_MIXED: AI called SMALL, actual BIG(15) -> Adjust CHOPPY_MIXED weight",
+        "timestamp": 1795873079790
+      },
+      {
+        "period": "20261128101010806",
+        "regime": "PAIR_2_2",
+        "level": 1,
+        "aiPred": "BIG",
+        "actualSize": "SMALL",
+        "outcome": "LOSS",
+        "lesson": "L1 MISS on PAIR_2_2: AI called BIG, actual SMALL(7) -> Adjust PAIR_2_2 weight",
+        "timestamp": 1795872360350
+      },
+      {
+        "period": "20261128101010805",
+        "regime": "CHOPPY_MIXED",
+        "level": 2,
+        "aiPred": "BIG",
+        "actualSize": "BIG",
+        "outcome": "WIN",
+        "lesson": "L2 WIN on CHOPPY_MIXED: AI BIG matched BIG(14)",
+        "timestamp": 1795872315440
+      }
+    ]
+  }
+}

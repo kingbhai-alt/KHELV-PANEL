@@ -19,10 +19,10 @@ export const ModeSelectionModal: React.FC<ModeSelectionModalProps> = ({
   const handleSelect = async (mode: WinGoMode) => {
     setSelected(mode);
     setIsConnecting(true);
-    setStatusText(`Loading 500+ Round Historical DB for WinGo ${mode}...`);
-    await new Promise((r) => setTimeout(r, 450));
-    setStatusText(`Backtesting All Algorithms & 3-Level Fix-Win Engine...`);
-    await new Promise((r) => setTimeout(r, 400));
+    setStatusText(`Loading 1,099+ Round Historical DB for WinGo ${mode}...`);
+    await new Promise((r) => setTimeout(r, 300));
+    setStatusText(`Arming 28 Algorithms & Unlimited Under-Level Shield Engine...`);
+    await new Promise((r) => setTimeout(r, 260));
     onSelectMode(mode);
   };
 
@@ -32,136 +32,129 @@ export const ModeSelectionModal: React.FC<ModeSelectionModalProps> = ({
     interval: string;
     tag: string;
     desc: string;
-    highlight?: boolean;
-    color: string;
+    accent: string;
   }[] = [
     {
       id: '1M',
       title: 'WinGo 1M',
-      interval: '1 MINUTE ROUND',
-      tag: '🔥 500+ DB BACKTESTED',
-      desc: 'Dragon & ZigZag Lock Active • Adaptive 3-Level Fix-Win Flow',
-      highlight: true,
-      color: 'border-emerald-500/60 bg-emerald-950/20 text-emerald-400',
+      interval: '60s ROUND',
+      tag: '1,099+ DB BACKTESTED',
+      desc: 'Anti-Bust Oracle + CTW-5 + 170K Calcs · Unlimited Continuous Flow',
+      accent: 'border-emerald-500/50 hover:border-emerald-400 bg-emerald-950/15 text-emerald-300',
     },
     {
       id: 'TRX_1M',
       title: 'TRX WinGo 1M',
-      interval: '1 MINUTE BLOCK ROUND',
-      tag: '💎 TRX BLOCKCHAIN LIVE',
-      desc: 'Tron Hash Block Verification • 0-4 Small | 5-9 Big Single Sureshot',
-      highlight: true,
-      color: 'border-cyan-400/80 bg-cyan-950/30 text-cyan-300',
+      interval: '60s BLOCK',
+      tag: 'TRON BLOCKCHAIN',
+      desc: 'TRX Hash Live Sync · 0-4 Small | 5-9 Big + 9X Single Jackpot',
+      accent: 'border-sky-500/50 hover:border-sky-400 bg-sky-950/15 text-sky-300',
     },
     {
       id: 'K3_1M',
       title: 'K3 WinGo 1M',
-      interval: '1 MINUTE DICE ROUND',
-      tag: '🎲 K3 LIVE API (3-18)',
-      desc: '3-10 Small | 11-18 Big • 3-Dice Sum & Single Number Sureshot',
-      highlight: true,
-      color: 'border-amber-400/70 bg-amber-950/30 text-amber-300',
+      interval: '60s DICE',
+      tag: 'K3 SUM 3-18 LIVE',
+      desc: '3-10 Small | 11-18 Big · Bell-Curve Sum & Single Jackpot Routing',
+      accent: 'border-amber-500/50 hover:border-amber-400 bg-amber-950/15 text-amber-300',
     },
     {
       id: '30S',
       title: 'WinGo 30S',
-      interval: '30 SECONDS RAPID',
-      tag: '⚡ ULTRA FAST BYPASS',
-      desc: 'High Frequency Scalping • Sub-10ms 500-Round Backtest Routing',
-      color: 'border-sky-500/50 bg-sky-950/20 text-sky-400',
+      interval: '30s RAPID',
+      tag: 'HIGH FREQUENCY',
+      desc: 'Rapid Scalping Mode · Real-Time 28-Algo Anti-Bust Consensus',
+      accent: 'border-violet-500/50 hover:border-violet-400 bg-violet-950/15 text-violet-300',
     },
   ];
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-3 sm:p-5 bg-slate-950/95 backdrop-blur-2xl overflow-y-auto">
-      {/* Background glow */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-10%,rgba(14,165,233,0.22),rgba(0,0,0,0))] pointer-events-none" />
+    <div
+      data-testid="mode-selection-modal"
+      className="fixed inset-0 z-[1000] flex items-center justify-center p-4 sm:p-6 bg-[#040711] overflow-y-auto animate-fade-up"
+    >
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(ellipse 80% 55% at 50% 0%, rgba(14,165,233,0.18), transparent 70%)',
+        }}
+      />
 
-      <div className="relative w-full max-w-md my-auto rounded-3xl bg-[#090d16] border-2 border-sky-500/40 shadow-[0_0_50px_rgba(14,165,233,0.25)] p-5 text-white overflow-hidden">
-        {/* Top Iridescent Glow line */}
-        <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-blue-500 via-sky-400 to-emerald-400" />
+      <div className="relative w-full max-w-2xl my-auto rounded-3xl bg-[#090e1d]/95 border border-sky-500/35 shadow-[0_24px_80px_rgba(0,0,0,0.85)] p-5 sm:p-7 text-white overflow-hidden backdrop-blur-xl">
+        <div className="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-sky-500 via-emerald-400 to-amber-400" />
 
         {/* Header */}
-        <div className="flex items-center gap-3 border-b border-slate-800 pb-3 mb-4">
-          <BrandLogo
-            alt="KHELV GAME PENEL Logo"
-            className="w-11 h-11 rounded-xl border border-sky-500/50 shadow-[0_0_15px_rgba(14,165,233,0.4)]"
-          />
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-black tracking-wider text-white">
-                KHELV GAME PENEL
-              </h2>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-sky-950 text-sky-300 font-mono font-bold border border-sky-500/40">
-                500+ BACKTEST
-              </span>
+        <div className="flex items-center justify-between gap-3 border-b border-slate-800 pb-4 mb-5">
+          <div className="flex items-center gap-3">
+            <BrandLogo
+              alt="KHELV GAME PENEL"
+              className="w-12 h-12 rounded-2xl border border-sky-500/50"
+            />
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="font-display text-lg sm:text-xl font-black tracking-wider text-white">
+                  KHELV GAME PENEL
+                </h2>
+                <span className="text-[10px] px-2 py-0.5 rounded-md bg-sky-950 text-sky-300 font-mono font-bold border border-sky-500/40">
+                  UNLIMITED ENGINE
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 font-mono mt-0.5">
+                License: {licenseSession.tier} · Select Market Feed to Launch Command Desk
+              </p>
             </div>
-            <p className="text-xs text-slate-400 font-mono">
-              License: {licenseSession.tier} • 3-Level Fix-Win Engine Armed
-            </p>
           </div>
         </div>
 
-        {/* Subtitle instructions */}
-        <div className="mb-4">
-          <p className="text-xs text-slate-300 font-medium">
-            Please choose your target WinGo game mode to load 500+ historical rounds & initiate live synchronization:
-          </p>
-        </div>
-
-        {/* Modes Grid */}
-        <div className="space-y-2.5 mb-4">
+        {/* Responsive 2x2 Mode Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
           {modes.map((m) => {
             const isThisSelected = selected === m.id;
             return (
               <button
                 key={m.id}
+                data-testid={`mode-card-${m.id}`}
                 onClick={() => handleSelect(m.id)}
                 disabled={isConnecting}
-                className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between group ${
-                  m.color
+                className={`w-full p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-3 ${
+                  m.accent
                 } ${
                   isThisSelected
-                    ? 'ring-2 ring-sky-400 scale-[1.01]'
-                    : 'hover:border-sky-400/80 hover:bg-slate-900/60'
+                    ? 'ring-2 ring-sky-400 bg-sky-950/40'
+                    : 'hover:bg-slate-900/60'
                 }`}
               >
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-black text-white">{m.title}</span>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-black/50 border border-white/10 font-bold">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="font-display text-base font-black text-white">{m.title}</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-black/50 border border-white/10 font-bold tabular-nums">
                       {m.interval}
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-400 font-mono mt-1">
+                  <p className="text-[11px] text-slate-300 leading-relaxed font-mono">
                     {m.desc}
-                  </div>
+                  </p>
                 </div>
 
-                <div className="text-right pl-2">
-                  <span className="text-[10px] font-extrabold font-mono block">
-                    {m.tag}
-                  </span>
-                  <span className="text-xs text-slate-400 group-hover:text-sky-400 font-bold">
-                    SELECT →
-                  </span>
+                <div className="flex items-center justify-between pt-2 border-t border-white/10 text-[10px] font-mono font-bold">
+                  <span>{m.tag}</span>
+                  <span className="text-white">LAUNCH &rarr;</span>
                 </div>
               </button>
             );
           })}
         </div>
 
-        {/* Loading status banner */}
         {isConnecting && (
-          <div className="p-3 rounded-xl bg-[#071926] border border-sky-500/60 text-sky-300 text-xs font-mono flex items-center gap-2 animate-pulse mb-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-sky-400 animate-ping inline-block" />
+          <div className="p-3.5 rounded-xl bg-sky-950/60 border border-sky-500/50 text-sky-200 text-xs font-mono flex items-center gap-2.5 mb-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-sky-400 animate-pulse inline-block" />
             <span>{statusText}</span>
           </div>
         )}
 
-        {/* Device Lock Info */}
-        <div className="text-[10px] text-slate-500 font-mono text-center pt-2 border-t border-slate-800">
-          Hardware Locked: {licenseSession.deviceId.slice(0, 16)}...
+        <div className="text-[11px] text-slate-400 font-mono text-center pt-3 border-t border-slate-800/80">
+          Hardware Bound: {licenseSession.deviceId.slice(0, 18)}... · 28 Algorithms &amp; 18 Clusters Armed
         </div>
       </div>
     </div>

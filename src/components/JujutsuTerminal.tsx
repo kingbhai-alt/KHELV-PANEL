@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   LotteryStats,
   HistoryLogRow,
@@ -10,12 +11,15 @@ import {
 } from '../services/lotteryService';
 import { LicenseSession, formatRemainingTime } from '../services/licenseService';
 import { PatternAnalysisPanel } from './PatternAnalysisPanel';
-import { ClusterVote, UserCalculationDetail } from '../logic/jujutsuEngine';
+import { ClusterVote, UserCalculationDetail, get_big_small } from '../logic/jujutsuEngine';
 import { BacktestSummary } from '../logic/backtestEngine';
 import { BrandLogo } from './BrandLogo';
 import { GeminiLiveInsight } from '../services/aiService';
 import { SelfLearningState } from '../logic/aiSelfLearningEngine';
-import { InvestmentRoiCalculator } from './InvestmentRoiCalculator';
+import { PredictionRevealStage } from './PredictionRevealStage';
+import { PredictionDecoderOverlay } from './PredictionDecoderOverlay';
+import { CelebrationPopup } from './CelebrationPopup';
+import { getMuted, getVoiceEnabled, toggleMute, toggleVoice, sfx } from '../utils/audio';
 
 interface JujutsuTerminalProps {
   stats: LotteryStats;
@@ -45,11 +49,13 @@ interface JujutsuTerminalProps {
   totalRoundSeconds: number;
   onResetStats?: () => void;
   onResetTargetRun?: () => void;
-  isTargetLocked?: boolean;
+  decodeKey?: string;
   geminiInsight?: GeminiLiveInsight | null;
   isGeminiLoading?: boolean;
   selfLearningState?: SelfLearningState | null;
   onAskGeminiNow?: () => void;
+  celebrationResult?: HistoryLogRow | null;
+  onDismissCelebration?: () => void;
 }
 
 export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
@@ -63,27 +69,50 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
   backtestSummary,
   gameMode,
   onSwitchMode,
+  isApiLive,
   licenseSession,
   onLogoutKey,
   remainingSeconds,
+  totalRoundSeconds,
   onResetStats,
-  onResetTargetRun,
-  isTargetLocked = false,
+  decodeKey = '',
   geminiInsight = null,
   isGeminiLoading = false,
   selfLearningState = null,
   onAskGeminiNow,
+  celebrationResult = null,
+  onDismissCelebration,
 }) => {
   const [activeTab, setActiveTab] = useState<'hack' | 'pattern' | 'my'>('hack');
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [showModeDropdown, setShowModeDropdown] = useState(false);
   const [remainingTimeStr, setRemainingTimeStr] = useState('');
-  const [historyFilter, setHistoryFilter] = useState<'ALL' | 'WIN' | 'JACKPOT' | 'LOSS'>('ALL');
-  const historyContainerRef = useRef<HTMLDivElement>(null);
+  const [historyFilter, setHistoryFilter] = useState<'ALL' | 'WIN' | 'JACKPOT' | 'LOSS' | 'L2L3'>('ALL');
+  const [historySearch, setHistorySearch] = useState('');
+  const [signalMode, setSignalMode] = useState<'UNLIMITED' | 'SURESHOT_FILTER'>('UNLIMITED');
+  const [baseUnitStake, setBaseUnitStake] = useState<number>(100);
+  const [isMutedState, setIsMutedState] = useState<boolean>(() => getMuted());
+  const [isVoiceOn, setIsVoiceOn] = useState<boolean>(() => getVoiceEnabled());
+  const [completedDecodeKey, setCompletedDecodeKey] = useState<string>('');
+  const [selectedHistoryPopup, setSelectedHistoryPopup] = useState<HistoryLogRow | null>(null);
 
-  // Expiry countdown calculation
   useEffect(() => {
-    if (licenseSession && licenseSession.expiresAt) {
+    if (!decodeKey) {
+      setCompletedDecodeKey('');
+    }
+  }, [decodeKey]);
+
+  const isDecoderOpen = Boolean(
+    decodeKey && currentPrediction.prediction !== '---' && decodeKey !== completedDecodeKey
+  );
+
+  const handleCloseCelebration = useCallback(() => {
+    setSelectedHistoryPopup(null);
+    onDismissCelebration?.();
+  }, [onDismissCelebration]);
+
+  useEffect(() => {
+    if (licenseSession?.expiresAt) {
       setRemainingTimeStr(formatRemainingTime(licenseSession.expiresAt));
       const interval = setInterval(() => {
         setRemainingTimeStr(formatRemainingTime(licenseSession.expiresAt));
@@ -92,22 +121,19 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
     }
   }, [licenseSession]);
 
-  // Format countdown mm:ss
   const formatTimer = (sec: number) => {
     const m = Math.floor(sec / 60);
     const s = sec % 60;
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  // 2 Predicted Numbers (e.g. "6 , 7" or "2 , 3")
-  const numPair =
+  const numPair: [number, number] =
     currentPrediction.predictedNumbers && currentPrediction.predictedNumbers.length === 2
       ? currentPrediction.predictedNumbers
       : currentPrediction.prediction === 'BIG'
       ? [6, 7]
       : [2, 3];
 
-  // Single Number Jackpot (#1 exact single number prediction for 9x payout)
   const singleDigit =
     currentPrediction.singleJackpotDigit !== undefined
       ? currentPrediction.singleJackpotDigit
@@ -117,8 +143,6 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
       ? 7
       : 2;
 
-  const singleConfidence = currentPrediction.singleJackpotConfidence || 98;
-
   const isK3 = isK3Game(gameMode);
   const isTrx = isTrxGame(gameMode);
   const formatModeTitle = (m: WinGoMode) => {
@@ -127,51 +151,229 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
     if (m === '30S') return 'WinGo 30S';
     return 'WinGo 1M';
   };
-
   const availableModes: WinGoMode[] = ['1M', 'TRX_1M', 'K3_1M', '30S'];
 
-  // Filtered History
-  const filteredHistory = history.filter((row) => {
-    if (historyFilter === 'WIN') return row.outcome === 'WIN' || row.outcome === 'JACKPOT';
-    if (historyFilter === 'JACKPOT') return row.outcome === 'JACKPOT';
-    if (historyFilter === 'LOSS') return row.outcome === 'LOSS';
-    return true;
-  });
+  // Estimate per-row & cumulative Net P/L (₹) using 1x : 2.1x : 4.4x recovery multipliers
+  const historyWithPnl = useMemo(() => {
+    return history.map((row) => {
+      const lvl = row.level || 1;
+      const mult =
+        lvl >= 5 ? 19.2 : lvl === 4 ? 9.2 : lvl === 3 ? 4.4 : lvl === 2 ? 2.1 : 1.0;
+      const stake = baseUnitStake * mult;
+      const pnl =
+        row.outcome === 'JACKPOT'
+          ? Math.round(stake * 1.96)
+          : row.outcome === 'WIN'
+          ? Math.round(stake * 0.96)
+          : -Math.round(stake);
+      return { ...row, stake: Math.round(stake), pnl };
+    });
+  }, [history, baseUnitStake]);
 
-  const targetProgress = Math.min(10, Math.max(0, stats.targetWins || 0));
-  const isLocked = isTargetLocked || targetProgress >= 10;
+  const sessionNetPnl = useMemo(
+    () => historyWithPnl.reduce((acc, r) => acc + r.pnl, 0),
+    [historyWithPnl]
+  );
+
+  const sessionUnder2Pct = useMemo(() => {
+    if (historyWithPnl.length === 0) return backtestSummary?.bestUnder2FixRate ?? 79;
+    const settledWins = historyWithPnl.filter((r) => r.outcome === 'WIN' || r.outcome === 'JACKPOT');
+    const u2Hits = settledWins.filter((r) => (r.level || 1) <= 2).length;
+    return Math.round((u2Hits / historyWithPnl.length) * 100);
+  }, [historyWithPnl, backtestSummary]);
+
+  const filteredHistory = useMemo(() => {
+    const q = historySearch.trim().toLowerCase();
+    return historyWithPnl.filter((row) => {
+      if (historyFilter === 'WIN' && row.outcome !== 'WIN' && row.outcome !== 'JACKPOT') return false;
+      if (historyFilter === 'JACKPOT' && row.outcome !== 'JACKPOT') return false;
+      if (historyFilter === 'LOSS' && row.outcome !== 'LOSS') return false;
+      if (historyFilter === 'L2L3' && (row.level || 1) < 2) return false;
+      if (q) {
+        return (
+          row.period.toLowerCase().includes(q) ||
+          String(row.number).includes(q) ||
+          row.pred.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [historyWithPnl, historyFilter, historySearch]);
+
+  const handleExportCsv = () => {
+    sfx.click();
+    const headers = ['Period', 'Level', 'PredSize', 'SingleDigit', 'ActualNumber', 'ActualSize', 'Outcome', 'NetPnL_INR', 'Confidence', 'Time'];
+    const lines = [
+      headers.join(','),
+      ...filteredHistory.map((r) =>
+        [
+          r.period,
+          `L${r.level || 1}`,
+          r.pred,
+          r.singleJackpotDigit ?? '',
+          r.number,
+          r.result,
+          r.outcome,
+          r.pnl,
+          `${r.confidence}%`,
+          r.time,
+        ].join(',')
+      ),
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `khelv-game-penel-${gameMode}-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleToggleMute = () => {
+    const muted = toggleMute();
+    setIsMutedState(muted);
+    if (!muted) sfx.click();
+  };
+
+  const handleToggleVoice = () => {
+    const enabled = toggleVoice();
+    setIsVoiceOn(enabled);
+    sfx.click();
+  };
+
+  const recentTape = useMemo(() => drawItems.slice(0, 16), [drawItems]);
+  const roundProgressPct = Math.min(
+    100,
+    Math.max(0, Math.round(((totalRoundSeconds - remainingSeconds) / Math.max(1, totalRoundSeconds)) * 100))
+  );
+
+  // Milestone progress without cap (10W -> 25W -> 50W -> 100W+)
+  const milestoneTargets = [10, 25, 50, 100];
 
   return (
-    <div className="w-full max-w-md mx-auto min-h-[100dvh] flex flex-col text-white select-none bg-[#070714] pb-16">
+    <div className="w-full max-w-md lg:max-w-6xl mx-auto min-h-[100dvh] flex flex-col text-slate-100 select-none bg-[#040711] pb-20 lg:pb-8">
+      {/* 4.0-SECOND FRAMER MOTION CYBER-TERMINAL PREDICTION DECODING OVERLAY */}
+      <PredictionDecoderOverlay
+        isOpen={isDecoderOpen && !celebrationResult}
+        period={currentPrediction.period}
+        gameMode={formatModeTitle(gameMode)}
+        currentLevel={stats.currentLevel}
+        isK3={isK3}
+        datasetSize={backtestSummary?.datasetSize || drawItems.length}
+        bestUnder2Rate={backtestSummary?.bestUnder2FixRate}
+        bestUnder3Rate={backtestSummary?.bestUnder3FixRate}
+        bestUnder5Rate={backtestSummary?.bestUnder5FixRate}
+        durationMs={4000}
+        onComplete={() => setCompletedDecodeKey(decodeKey)}
+      />
+
+      {/* HYPER-PREMIUM GLASSMORPHISM WIN / LOSS / 9X JACKPOT OUTCOME OVERLAY */}
+      <CelebrationPopup
+        result={selectedHistoryPopup || celebrationResult}
+        baseStake={baseUnitStake}
+        onClose={handleCloseCelebration}
+      />
+
       {/* =========================================================================
-          VIEW TAB: HACK / PREDICT (Hyper-Premium Cyber Theme)
+          TOP COMMAND NAVIGATION & STATUS BAR
          ========================================================================= */}
-      {activeTab === 'hack' && (
-        <div className="flex-1 flex flex-col p-2.5">
-          {/* Subtle Key & Mode Switcher line */}
-          <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 px-1 mb-1 shrink-0">
-            {/* Mode selector */}
+      <header className="sticky top-0 z-40 bg-[#040711]/95 backdrop-blur-xl border-b border-slate-800/80 px-3 sm:px-5 py-2.5">
+        <div className="flex items-center justify-between gap-2">
+          {/* Brand + Mode Switcher */}
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+            <BrandLogo
+              alt="KHELV GAME PENEL"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl border border-sky-400/60 shadow-[0_0_16px_rgba(56,189,248,0.28)] shrink-0"
+            />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="font-display font-black tracking-wider text-[11px] sm:text-sm text-white truncate whitespace-nowrap">
+                  KHELV GAME PENEL
+                </h1>
+                <span className="hidden sm:inline-flex text-[10px] px-2 py-0.5 rounded bg-emerald-950/90 text-emerald-300 font-mono font-bold border border-emerald-500/40 whitespace-nowrap">
+                  UNLIMITED
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-400 tabular-nums whitespace-nowrap truncate">
+                <span className="flex items-center gap-1 text-emerald-400 font-semibold shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="sm:hidden">{isApiLive ? 'LIVE' : 'SYNC'}</span>
+                  <span className="hidden sm:inline">{isApiLive ? 'LIVE SYNC' : 'BUFFER SYNC'}</span>
+                </span>
+                <span>·</span>
+                <span className="text-sky-300 font-bold">#{currentPrediction.period?.slice(-6) || '------'}</span>
+                <span>·</span>
+                <span className="text-amber-300 font-bold">{formatTimer(remainingSeconds)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Desktop Navigation Tabs */}
+          <nav className="hidden lg:flex items-center gap-1 bg-[#090e1d] p-1 rounded-xl border border-slate-800">
+            <button
+              type="button"
+              data-testid="tab-command-desk"
+              onClick={() => setActiveTab('hack')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                activeTab === 'hack'
+                  ? 'bg-sky-500/20 text-sky-300 border border-sky-400/40'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Command Desk
+            </button>
+            <button
+              type="button"
+              data-testid="tab-pattern-lab"
+              onClick={() => setActiveTab('pattern')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                activeTab === 'pattern'
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-400/40'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Pattern &amp; Backtest Lab
+            </button>
+            <button
+              type="button"
+              data-testid="tab-system-ai"
+              onClick={() => setActiveTab('my')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                activeTab === 'my'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              System &amp; AI Memory
+            </button>
+          </nav>
+
+          {/* Controls: Mode Dropdown + Audio/Voice + Key */}
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
             <div className="relative">
               <button
+                type="button"
+                data-testid="mode-switcher-btn"
                 onClick={() => setShowModeDropdown(!showModeDropdown)}
-                className="text-slate-300 hover:text-white font-bold flex items-center gap-1 cursor-pointer bg-slate-900/60 px-2 py-0.5 rounded-lg border border-slate-800"
+                className="min-h-[34px] text-amber-300 hover:text-amber-200 font-mono text-[10px] sm:text-[11px] font-bold flex items-center gap-1 cursor-pointer bg-[#090e1d] px-2 sm:px-2.5 py-1 rounded-lg border border-slate-800 whitespace-nowrap"
               >
-                <span className="text-amber-400">{formatModeTitle(gameMode)}</span>
-                <span className="text-[10px] text-slate-400">▼</span>
+                <span>{formatModeTitle(gameMode)}</span>
+                <span className="text-[9px] text-slate-400">▼</span>
               </button>
 
               {showModeDropdown && (
-                <div className="absolute top-full left-0 mt-1 z-50 bg-[#0e0f1f] border border-amber-500/50 rounded-xl p-1 shadow-2xl min-w-[140px] space-y-1 backdrop-blur-xl">
+                <div className="absolute top-full right-0 mt-1.5 z-50 bg-[#0b1122] border border-sky-500/40 rounded-xl p-1.5 shadow-2xl min-w-[160px] space-y-1">
                   {availableModes.map((m) => (
                     <button
                       key={m}
+                      type="button"
                       onClick={() => {
                         onSwitchMode(m);
                         setShowModeDropdown(false);
                       }}
-                      className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-bold font-mono transition-colors ${
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold font-mono transition-colors cursor-pointer ${
                         gameMode === m
-                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                          ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
                           : 'text-slate-300 hover:bg-slate-800'
                       }`}
                     >
@@ -182,404 +384,266 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
               )}
             </div>
 
-            {/* Panel Title: KHELV GAME PENEL with Brand Logo */}
-            <div className="flex items-center gap-1.5">
-              <BrandLogo
-                alt="KHELV GAME PENEL"
-                className="w-5 h-5 rounded-md border border-sky-400/60 shadow-[0_0_8px_rgba(56,189,248,0.45)]"
-              />
-              <span className="font-black tracking-widest text-xs text-sky-400">
-                KHELV GAME PENEL
-              </span>
-            </div>
-
-            {/* Key info button */}
             <button
-              onClick={() => setShowKeyModal(!showKeyModal)}
-              className="text-[10px] text-sky-400 hover:text-sky-300 font-mono px-2 py-0.5 rounded-lg bg-sky-950/40 border border-sky-500/30 cursor-pointer flex items-center gap-1"
+              type="button"
+              onClick={handleToggleMute}
+              title={isMutedState ? 'Unmute SFX' : 'Mute SFX'}
+              className="hidden sm:flex min-h-[34px] px-2 rounded-lg bg-[#090e1d] border border-slate-800 text-[11px] font-mono text-slate-300 hover:text-white items-center cursor-pointer whitespace-nowrap"
             >
-              <span>Key: {remainingTimeStr || 'VIP'}</span>
-              <span>🔒</span>
+              {isMutedState ? 'SFX OFF' : 'SFX ON'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleToggleVoice}
+              title="Toggle Voice Cues"
+              className="hidden md:flex min-h-[34px] px-2 rounded-lg bg-[#090e1d] border border-slate-800 text-[11px] font-mono text-slate-300 hover:text-white items-center cursor-pointer whitespace-nowrap"
+            >
+              {isVoiceOn ? 'VOICE ON' : 'VOICE OFF'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowKeyModal(!showKeyModal)}
+              className="min-h-[34px] text-[10px] text-sky-300 hover:text-sky-200 font-mono px-2 sm:px-2.5 py-1 rounded-lg bg-sky-950/40 border border-sky-500/35 cursor-pointer flex items-center gap-1 tabular-nums whitespace-nowrap"
+            >
+              <span className="sm:hidden">{licenseSession?.tier || 'VIP'}</span>
+              <span className="hidden sm:inline">{remainingTimeStr || 'VIP'}</span>
             </button>
           </div>
+        </div>
 
-          {/* Key Quick Info Dropdown if opened */}
-          {showKeyModal && (
-            <div className="mb-2 p-2.5 rounded-xl bg-[#0e0f1f] border border-slate-700 text-xs font-mono flex items-center justify-between shrink-0 shadow-xl">
-              <div>
-                <span className="text-emerald-400 font-bold">KHELV GAME PENEL LOCK: </span>
-                <span className="text-slate-300">{licenseSession?.deviceId?.slice(0, 12)}...</span>
-                <div className="text-[10px] text-slate-400">Validity: {remainingTimeStr}</div>
+        {/* Thin Round Countdown Progress Line */}
+        <div className="mt-2 h-1 w-full rounded-full bg-slate-900 overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-sky-500 via-emerald-400 to-amber-400 transition-[width] duration-300"
+            style={{ width: `${roundProgressPct}%` }}
+          />
+        </div>
+
+        {showKeyModal && (
+          <div className="mt-2 p-2.5 rounded-xl bg-[#090e1d] border border-slate-700 text-xs font-mono flex items-center justify-between gap-2 shadow-xl">
+            <div className="truncate">
+              <span className="text-emerald-400 font-bold">DEVICE LOCKED: </span>
+              <span className="text-slate-300">{licenseSession?.deviceId}</span>
+            </div>
+            <button
+              type="button"
+              onClick={onLogoutKey}
+              className="px-3 py-1.5 bg-red-950/80 hover:bg-red-900 border border-red-500/40 text-red-200 text-[11px] font-bold rounded-lg cursor-pointer shrink-0"
+            >
+              Change Key
+            </button>
+          </div>
+        )}
+      </header>
+
+      {/* =========================================================================
+          VIEW 1: COMMAND DESK (2-COLUMN ON DESKTOP, STACKED ON MOBILE)
+         ========================================================================= */}
+      {activeTab === 'hack' && (
+        <main className="flex-1 p-3 sm:p-5 space-y-3 sm:space-y-4">
+          {/* UNLIMITED CONTINUOUS ENGINE BANNER (ZERO 10-WIN LIMIT) */}
+          <section
+            data-testid="unlimited-engine-banner"
+            className="rounded-2xl bg-[#090e1d] border border-emerald-500/30 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+          >
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 font-mono text-[10px] font-black border border-emerald-500/40">
+                UNLIMITED CONTINUOUS WINS
+              </span>
+              <span className="text-xs font-mono text-slate-300 tabular-nums">
+                Session Wins: <strong className="text-white">{stats.wins}</strong> · Best Streak:{' '}
+                <strong className="text-amber-300">{stats.bestStreak}</strong>
+              </span>
+              <div className="flex items-center gap-1 font-mono text-[10px] tabular-nums">
+                {milestoneTargets.map((m) => {
+                  const hit = stats.wins >= m;
+                  return (
+                    <span
+                      key={m}
+                      className={`px-1.5 py-0.5 rounded border ${
+                        hit
+                          ? 'bg-amber-500/20 border-amber-400/60 text-amber-300 font-bold'
+                          : 'bg-slate-950 border-slate-800 text-slate-500'
+                      }`}
+                    >
+                      {m}W
+                    </span>
+                  );
+                })}
               </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 font-mono text-[10px]">
+              <span className="text-slate-400">Signal Mode:</span>
               <button
-                onClick={onLogoutKey}
-                className="px-2.5 py-1 bg-red-950/80 hover:bg-red-900 border border-red-500/40 text-red-300 text-[10px] rounded-lg cursor-pointer transition-colors"
+                type="button"
+                onClick={() =>
+                  setSignalMode((prev) =>
+                    prev === 'UNLIMITED' ? 'SURESHOT_FILTER' : 'UNLIMITED'
+                  )
+                }
+                className={`px-2.5 py-1 rounded-lg font-bold border cursor-pointer transition-colors ${
+                  signalMode === 'UNLIMITED'
+                    ? 'bg-sky-500/20 text-sky-300 border-sky-400/50'
+                    : 'bg-amber-500/20 text-amber-300 border-amber-400/50'
+                }`}
               >
-                Change Key
+                {signalMode === 'UNLIMITED' ? 'Unlimited Stream (All Rds)' : 'Sureshot >=4/5 Filter'}
               </button>
             </div>
-          )}
+          </section>
 
-          {/* 1. TOP HEADER: Cyan Period & LIVE STATUS: CONNECTED */}
-          <div className="text-center py-1 shrink-0 relative">
-            <div className="text-base sm:text-lg font-black font-mono tracking-widest text-[#38bdf8] drop-shadow-[0_0_14px_rgba(56,189,248,0.5)]">
-              {currentPrediction.period || '20261015100010457'}
-            </div>
-            <div className="text-[11px] font-black tracking-wider text-[#38bdf8] mt-0.5 flex items-center justify-center gap-2">
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#10b981]" />
-                <span>LIVE STATUS: CONNECTED</span>
-              </span>
-              <span className="text-slate-600 font-normal">|</span>
-              <span className="text-emerald-400 font-mono text-[11px] font-bold">
-                Next: {formatTimer(remainingSeconds)}
-              </span>
-            </div>
-          </div>
-
-          {/* 🎯 TARGET 10 WINS FIX CHALLENGE PROTOCOL BAR (Under 3 Level Fix Guarantee) */}
-          <div className="rounded-xl p-2 bg-gradient-to-r from-[#0d1326] via-[#101935] to-[#0d1326] border border-sky-500/40 shadow-[0_0_15px_rgba(56,189,248,0.15)] mb-2 shrink-0">
-            <div className="flex items-center justify-between text-[10px] font-black tracking-wider mb-1.5">
-              <div className="flex items-center gap-1.5 text-sky-300">
-                <span className="animate-pulse">🎯</span>
-                <span>TARGET 10 WINS PROTOCOL</span>
-                <span className="px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 font-mono text-[9px] border border-emerald-500/40">
-                  UNDER 3 FIX
-                </span>
-              </div>
-              <div className="flex items-center gap-1 text-[9px] font-mono">
-                <span className="text-emerald-400 font-bold">{targetProgress}/10 WINS</span>
-                {stats.targetRunsCompleted > 0 && (
-                  <span className="text-amber-400 font-bold">
-                    [🏆 {stats.targetRunsCompleted} Completed]
-                  </span>
+          {/* 2-COLUMN COMMAND GRID */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+            {/* LEFT COLUMN: 4s Decoder Prediction + Official Tape + Gemini AI + ROI Calculator */}
+            <div className="lg:col-span-5 space-y-3.5">
+              {signalMode === 'SURESHOT_FILTER' &&
+                backtestSummary &&
+                backtestSummary.entrySignal === 'WAIT_OPTIONAL' &&
+                stats.currentLevel === 1 && (
+                  <div className="p-2.5 rounded-xl bg-amber-950/45 border border-amber-400/50 text-amber-200 text-xs font-mono flex items-center justify-between">
+                    <span>Split 50/50 Window — Optional Wait advised (Sureshot Filter active)</span>
+                    <button
+                      type="button"
+                      onClick={() => setSignalMode('UNLIMITED')}
+                      className="underline text-amber-300 font-bold ml-2 shrink-0 cursor-pointer"
+                    >
+                      Override
+                    </button>
+                  </div>
                 )}
-              </div>
-            </div>
 
-            {/* 10 Progress Nodes */}
-            <div className="grid grid-cols-10 gap-1 mb-1">
-              {Array.from({ length: 10 }).map((_, idx) => {
-                const nodeNum = idx + 1;
-                const isCompleted = nodeNum <= targetProgress;
-                const isCurrent = nodeNum === targetProgress + 1 && targetProgress < 10;
-                return (
-                  <div
-                    key={nodeNum}
-                    className={`h-6 rounded-md flex flex-col items-center justify-center font-mono text-[9px] font-black transition-all ${
-                      isCompleted
-                        ? 'bg-gradient-to-b from-emerald-500 to-emerald-700 text-slate-950 shadow-[0_0_8px_rgba(16,185,129,0.7)]'
-                        : isCurrent
-                        ? 'bg-amber-500/30 text-amber-300 border border-amber-400 animate-pulse shadow-[0_0_8px_rgba(245,158,11,0.5)]'
-                        : 'bg-black/40 text-slate-600 border border-slate-800'
-                    }`}
-                  >
-                    {isCompleted ? '✓' : nodeNum}
-                  </div>
-                );
-              })}
-            </div>
+              <PredictionRevealStage
+                period={currentPrediction.period}
+                prediction={currentPrediction.prediction}
+                singleDigit={singleDigit}
+                numPair={numPair}
+                confidence={currentPrediction.confidence || 96}
+                currentLevel={stats.currentLevel}
+                isK3={isK3}
+                isTrx={isTrx}
+                rule={currentPrediction.rule}
+                backtestSummary={backtestSummary}
+                decodeKey={decodeKey}
+                isDecodingOverlayActive={isDecoderOpen || Boolean(celebrationResult)}
+                baseStake={baseUnitStake}
+              />
 
-            {/* 10-Win Target Celebration Banner if 10 wins accomplished */}
-            {targetProgress >= 10 ? (
-              <div className="mt-1 p-1.5 rounded-lg bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-sky-500/20 border border-amber-400/80 flex items-center justify-between animate-pulse">
-                <span className="text-[10px] font-black text-amber-300 flex items-center gap-1">
-                  <span>🏆</span>
-                  <span>10/10 TARGET ACCOMPLISHED (0 LEVEL-3 LOSSES)!</span>
-                </span>
-                {onResetTargetRun && (
-                  <button
-                    onClick={onResetTargetRun}
-                    className="px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[9.5px] cursor-pointer shadow-md"
-                  >
-                    🚀 Start Next 10
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center justify-between text-[8.5px] text-slate-400 font-mono mt-0.5 px-0.5">
-                <span>Rule: 100% Win under 3 levels (Max Level 3 Fix Lock).</span>
-                <span className="text-emerald-400 font-bold">
-                  {stats.currentLevel === 3
-                    ? '⚠️ L3 HARDLOCK ACTIVE'
-                    : stats.currentLevel === 2
-                    ? '⚡ L2 RECOVERY ARMED'
-                    : '✓ L1 NORMAL'}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* 2. CARD: ⚡ NEXT SURESHOT PREDICTION (OR 🔒 10-WIN TARGET AUTO-LOCKOUT) */}
-          {isLocked ? (
-            <div className="relative rounded-2xl p-3.5 sm:p-4 bg-gradient-to-b from-[#1c1809] via-[#10101f] to-[#070714] border-2 border-amber-400 shadow-[0_0_32px_rgba(245,158,11,0.4)] mb-2 shrink-0 overflow-hidden text-center flex flex-col items-center justify-center animate-fade-in">
-              <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 animate-pulse" />
-
-              <div className="flex items-center justify-center gap-2 mb-1.5">
-                <span className="text-2xl animate-bounce">🏆</span>
-                <span className="text-2xl animate-pulse">🔒</span>
-              </div>
-
-              <div className="text-amber-400 font-black text-sm sm:text-base tracking-wider uppercase mb-1 drop-shadow-[0_0_12px_rgba(245,158,11,0.8)]">
-                TARGET 10 WINS ACCOMPLISHED!
-              </div>
-
-              <div className="text-[10px] sm:text-[11px] font-bold text-emerald-400 mb-1 flex items-center gap-1.5 font-mono">
-                <span>🛡️ 100% UNDER 3 LEVEL FIX COMPLETE</span>
-                <span>•</span>
-                <span>0 L3 LOSSES</span>
-              </div>
-
-              <p className="text-[10px] text-slate-300 leading-tight max-w-[340px] mb-3 font-mono">
-                Profit Locked! Hack prediction auto-pause ho gaya hai profits secure rakhne ke liye. Agla 10-win target session shuru karne ke liye niche click karein.
-              </p>
-
-              {onResetTargetRun && (
-                <button
-                  onClick={onResetTargetRun}
-                  className="w-full max-w-[320px] py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-xs sm:text-sm tracking-wider uppercase shadow-[0_0_24px_rgba(245,158,11,0.7)] cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2"
-                >
-                  <span>🔓</span>
-                  <span>REOPEN HACK PREDICTION / NEXT 10</span>
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="relative rounded-2xl p-2.5 sm:p-3 bg-gradient-to-b from-[#11132b] to-[#070714] border border-amber-500/50 shadow-[0_0_28px_rgba(245,158,11,0.22)] mb-2 shrink-0 overflow-hidden">
-              {/* Subtle animated scanline / top accent */}
-              <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-amber-400 to-transparent animate-pulse" />
-
-              {/* Title Bar */}
-              <div className="text-center font-black uppercase tracking-wider text-[11px] sm:text-xs text-[#f59e0b] mb-2 flex items-center justify-between drop-shadow-[0_0_10px_rgba(245,158,11,0.5)]">
-                <span className="text-[9px] px-2 py-0.5 rounded bg-emerald-950/90 text-emerald-300 font-mono border border-emerald-500/30 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                  <span>{isK3 ? 'K3 LIVE' : isTrx ? 'TRX LIVE' : '170K CALCS'}</span>
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-amber-400 animate-bounce">⚡</span>
-                  <span className="tracking-widest">NEXT SURESHOT PREDICTION</span>
-                </div>
-                <span className="text-[9px] px-2 py-0.5 rounded bg-amber-950/90 text-amber-300 font-mono border border-amber-500/30 font-bold">
-                  {stats.currentLevel === 3
-                    ? '👑 L3 FIX LOCK'
-                    : stats.currentLevel === 2
-                    ? '⚡ L2 ARMED'
-                    : '✓ LEVEL 1'}
-                </span>
-              </div>
-
-              {/* Hyper-Premium 2-Panel Hero Grid: PRED SIZE & 🎯 SINGLE NUMBER ONLY */}
-              <div className="grid grid-cols-2 gap-2">
-                {/* Panel 1: PREDICTION SIZE (BIG / SMALL) */}
-                <div className="relative rounded-xl bg-gradient-to-b from-[#0a0d1e] to-[#05060f] border border-slate-700/80 p-2 sm:p-2.5 text-center flex flex-col justify-between items-center shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)] min-h-[82px] overflow-hidden group">
-                  <div className="w-full flex items-center justify-between text-[9px] font-black uppercase tracking-wider text-slate-400">
-                    <span className="text-slate-400">{isK3 ? 'K3 SUM SIZE' : isTrx ? 'TRX SIZE' : 'PRED SIZE'}</span>
-                    <span className="text-[8px] font-mono text-slate-400 font-bold">
-                      {isK3
-                        ? currentPrediction.prediction === 'BIG'
-                          ? '11-18 (BIG)'
-                          : '3-10 (SMALL)'
-                        : currentPrediction.prediction === 'BIG'
-                        ? '5,6,7,8,9'
-                        : '0,1,2,3,4'}
-                    </span>
-                  </div>
-
-                  <div
-                    className={`text-2xl sm:text-3xl font-black tracking-wide my-0.5 ${
-                      currentPrediction.prediction === 'BIG'
-                        ? 'text-[#ff4d6d] drop-shadow-[0_0_20px_rgba(255,77,109,0.8)]'
-                        : 'text-[#10b981] drop-shadow-[0_0_20px_rgba(16,185,129,0.8)]'
-                    }`}
-                  >
-                    {currentPrediction.prediction === '---'
-                      ? 'Wait...'
-                      : currentPrediction.prediction === 'BIG'
-                      ? 'Big'
-                      : 'Small'}
-                  </div>
-
-                  <div className="w-full flex items-center justify-center">
-                    <span className="text-[8px] font-mono px-2 py-0.5 rounded bg-black/50 text-slate-300 border border-slate-800">
-                      {stats.currentLevel === 3
-                        ? '🛡️ Level 3 Fix Hardlock'
-                        : stats.currentLevel === 2
-                        ? '⚡ Level 2 Anti-Loss'
-                        : '✓ Under 3 Sureshot'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Panel 2: 🎯 ONLY SINGLE NUMBER JACKPOT (9X DIRECT WIN) */}
-                <div className="relative rounded-xl bg-gradient-to-b from-[#1b1c3d] via-[#10132b] to-[#070817] border-2 border-amber-400/90 p-2 sm:p-2.5 text-center flex flex-col justify-between items-center shadow-[0_0_25px_rgba(245,158,11,0.45)] min-h-[82px] overflow-hidden">
-                  {/* Radiant amber pulsing corner indicator */}
-                  <div className="absolute top-1 right-1 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 bg-amber-400 animate-ping rounded-full inline-block" />
-                    <span className="text-[7.5px] font-black text-amber-300 font-mono">9X</span>
-                  </div>
-
-                  <div className="w-full flex items-center justify-start text-[9px] font-black uppercase tracking-wider text-amber-300">
-                    <span className="flex items-center gap-1">
-                      <span>🎯</span>
-                      <span>{isK3 ? 'K3 SINGLE SUM' : isTrx ? 'TRX SINGLE NO.' : 'SINGLE NO. JACKPOT'}</span>
-                    </span>
-                  </div>
-
-                  {/* Massive Glowing Single Jackpot Digit */}
-                  <div className="text-3xl sm:text-4xl font-black tracking-widest text-[#facc15] drop-shadow-[0_0_26px_rgba(250,204,21,1)] font-mono animate-pulse my-0.5">
-                    [{singleDigit}]
-                  </div>
-
-                  <div className="w-full flex items-center justify-center">
-                    <span className="text-[8px] font-mono font-bold px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500/30 to-yellow-500/30 text-amber-300 border border-amber-400/60 shadow-[0_0_10px_rgba(245,158,11,0.3)]">
-                      {isK3 ? '🎲 K3 9X JACKPOT' : isTrx ? '💎 TRX 9X JACKPOT' : '🔥 ONLY SINGLE NUMBER'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Sub-banner: 500+ Round Pre-Prediction Backtest & 3-Level Fix Guarantee */}
-              <div className="mt-2 pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-[8.5px] font-mono text-slate-400 px-0.5 tabular-nums">
-                <span className="text-sky-300 flex items-center gap-1 truncate max-w-[140px]">
-                  <span>📊</span>
-                  <span>
-                    {backtestSummary
-                      ? `${backtestSummary.datasetSize} Rounds Backtested`
-                      : isK3
-                      ? 'K3 3-18 RANGE'
-                      : '500+ ROUNDS READY'}
+              {/* LIVE OFFICIAL DRAW TAPE (LAST 16 OFFICIAL RESULTS) */}
+              <div className="rounded-2xl bg-[#090e1d] border border-slate-800/90 p-3">
+                <div className="flex items-center justify-between text-[11px] font-mono mb-2">
+                  <span className="font-bold text-slate-200 uppercase tracking-wider">
+                    Official Draw Tape (Latest 16)
                   </span>
-                </span>
-                <span className="text-slate-600">•</span>
-                <span className="text-emerald-400 font-bold flex items-center gap-1">
-                  <span>🛡️</span>
-                  <span>
-                    {backtestSummary
-                      ? `${backtestSummary.bestUnder3FixRate}% UNDER 3 FIX`
-                      : 'UNDER 3 LEVEL FIX'}
+                  <span className="text-slate-400 tabular-nums">
+                    Pool: {drawItems.length} Rds
                   </span>
-                </span>
-                <span className="text-slate-600">•</span>
-                <span className="text-amber-400 font-bold truncate max-w-[100px]">
-                  {backtestSummary
-                    ? `L1: ${backtestSummary.bestLevel1Accuracy}%`
-                    : isK3
-                    ? '3-10 S | 11-18 B'
-                    : isTrx
-                    ? 'TRX 1M LIVE'
-                    : '170K CALCS'}
-                </span>
-              </div>
-              {backtestSummary && (
-                <div className="mt-1 space-y-1 tabular-nums">
-                  <div className="px-1.5 py-1 rounded-lg bg-black/40 border border-sky-500/20 flex items-center justify-between text-[8.5px] font-mono text-slate-300">
-                    <span className="truncate">
-                      Best Algo: <strong className="text-sky-300">{backtestSummary.bestStrategyName}</strong>
-                    </span>
-                    <span className="text-emerald-400 shrink-0 ml-2">
-                      {backtestSummary.totalSimulatedRounds} rounds verified
-                    </span>
-                  </div>
-                  <div
-                    className={`px-2 py-1 rounded-lg border flex items-center justify-between text-[8.5px] font-mono ${
-                      backtestSummary.entrySignal === 'SURESHOT_LOCK'
-                        ? 'bg-emerald-950/60 border-emerald-400/60 text-emerald-300'
-                        : backtestSummary.entrySignal === 'STRONG_ENTRY'
-                        ? 'bg-sky-950/60 border-sky-400/50 text-sky-300'
-                        : 'bg-amber-950/50 border-amber-400/50 text-amber-300'
-                    }`}
-                  >
-                    <span className="truncate font-bold">
-                      {backtestSummary.entrySignal === 'SURESHOT_LOCK'
-                        ? '🎯 SURESHOT LOCK'
-                        : backtestSummary.entrySignal === 'STRONG_ENTRY'
-                        ? '⚡ STRONG ENTRY'
-                        : '⏳ SPLIT WINDOW (OPTIONAL WAIT)'}
-                      <span className="font-normal opacity-90 ml-1.5">· {backtestSummary.entryReason}</span>
-                    </span>
-                    {backtestSummary.dbFeedbackCount > 0 && (
-                      <span className="shrink-0 ml-2 text-sky-300 font-bold">
-                        History:{backtestSummary.dbFeedbackCount} ({backtestSummary.dbWinRate}%)
-                      </span>
-                    )}
-                  </div>
                 </div>
-              )}
+                <div className="grid grid-cols-8 gap-1.5 tabular-nums">
+                  {recentTape.map((item, idx) => {
+                    const num = Number(item.number);
+                    const sz = get_big_small(num, isK3);
+                    const isBig = sz === 'BIG';
+                    return (
+                      <div
+                        key={`${item.issueNumber}-${idx}`}
+                        title={`#${item.issueNumber}: ${num} (${sz})`}
+                        className={`rounded-lg py-1.5 px-1 text-center border font-mono ${
+                          idx === 0
+                            ? 'ring-1 ring-sky-400 bg-sky-950/40 border-sky-400/70'
+                            : isBig
+                            ? 'bg-[#1a0d16] border-[#ff4d6d]/35'
+                            : 'bg-[#081c17] border-[#10b981]/35'
+                        }`}
+                      >
+                        <div
+                          className={`text-xs font-black ${
+                            isBig ? 'text-[#ff4d6d]' : 'text-[#10b981]'
+                          }`}
+                        >
+                          {item.number}
+                        </div>
+                        <div className="text-[8px] text-slate-400 font-bold">
+                          {isBig ? 'B' : 'S'}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
 
-              {/* 🧠 GEMINI 4 HYDROGEN • SELF-LEARNING AI BOOSTER PANEL */}
-              <div className="mt-1.5 px-2 py-1.5 rounded-xl bg-gradient-to-r from-[#0a1026] via-[#121633] to-[#0a1026] border border-violet-500/40 shadow-[0_0_16px_rgba(139,92,246,0.18)] text-[8.5px] font-mono tabular-nums">
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <div className="flex items-center gap-1.5 text-violet-300 font-black tracking-wide">
-                    <span className={isGeminiLoading ? 'animate-spin inline-block' : ''}>🧠</span>
-                    <span>GEMINI 4 HYDROGEN • SELF-LEARNING AI</span>
+              {/* GEMINI 4 HYDROGEN + SELF-LEARNING AI CARD */}
+              <div className="rounded-2xl bg-[#090e1d] border border-violet-500/35 p-3 font-mono text-xs tabular-nums">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <div className="font-display font-extrabold text-violet-300 tracking-wide text-xs sm:text-[13px]">
+                    GEMINI AI · SELF-LEARNING ORACLE
                   </div>
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     {isGeminiLoading ? (
-                      <span className="px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-200 border border-violet-400/40 animate-pulse text-[8px]">
+                      <span className="px-2 py-0.5 rounded bg-violet-500/20 text-violet-200 border border-violet-400/40 text-[10px] whitespace-nowrap">
                         THINKING...
                       </span>
                     ) : geminiInsight?.ok ? (
-                      <span className="px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-300 border border-emerald-500/50 text-[8px] font-bold">
-                        ● {geminiInsight.model?.includes('flash-lite') ? 'LITE' : '4H'} LIVE{' '}
-                        {geminiInsight.latencyMs ? `${geminiInsight.latencyMs}ms` : ''}
-                      </span>
-                    ) : geminiInsight?.errorCode === 'GEMINI_KEY_MISSING' ? (
-                      <span className="px-1.5 py-0.5 rounded bg-amber-950/90 text-amber-300 border border-amber-500/40 text-[8px]">
-                        KEY NEEDED
-                      </span>
-                    ) : geminiInsight?.errorCode === 'QUOTA_COOLDOWN' ||
-                      geminiInsight?.errorCode === 'RESOURCE_EXHAUSTED' ? (
-                      <span className="px-1.5 py-0.5 rounded bg-sky-950/90 text-sky-300 border border-sky-500/40 text-[8px] font-bold">
-                        QUANT ACTIVE
+                      <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold whitespace-nowrap">
+                        LIVE {geminiInsight.latencyMs ? `${geminiInsight.latencyMs}ms` : ''}
                       </span>
                     ) : (
-                      <span className="px-1.5 py-0.5 rounded bg-slate-900 text-slate-300 border border-slate-700 text-[8px]">
-                        QUANT AI ACTIVE
+                      <span className="px-2 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-500/40 text-[10px] font-bold whitespace-nowrap">
+                        28-ALGO QUANT ACTIVE
                       </span>
                     )}
                     {onAskGeminiNow && !isGeminiLoading && (
                       <button
                         type="button"
                         onClick={onAskGeminiNow}
-                        title="Refresh Live Gemini AI"
-                        className="px-1.5 py-0.5 rounded bg-violet-950/80 hover:bg-violet-800/70 text-violet-200 border border-violet-500/40 text-[8px] cursor-pointer transition-colors"
+                        className="px-2 py-0.5 rounded bg-violet-950 hover:bg-violet-900 text-violet-200 border border-violet-500/40 text-[10px] cursor-pointer whitespace-nowrap"
                       >
-                        ✨ Retry AI
+                        Sync AI
                       </button>
                     )}
                   </div>
                 </div>
 
-                {/* Live Self-Learning Stats Strip */}
                 {selfLearningState && (
-                  <div className="flex items-center justify-between text-[8px] text-slate-300 bg-black/40 rounded-lg px-1.5 py-0.5 mb-1 border border-white/5">
-                    <span>
-                      Learned: <strong className="text-sky-300">{selfLearningState.totalRoundsLearned}</strong> rds
-                    </span>
-                    <span>
-                      U2 Fix:{' '}
+                  <div className="grid grid-cols-4 gap-1.5 text-[10px] mb-2">
+                    <div className="p-1.5 rounded-lg bg-[#050814] border border-slate-800 text-center">
+                      <span className="text-slate-400 block text-[9px]">LEARNED</span>
+                      <strong className="text-sky-300">{selfLearningState.totalRoundsLearned} rds</strong>
+                    </div>
+                    <div className="p-1.5 rounded-lg bg-[#050814] border border-slate-800 text-center">
+                      <span className="text-slate-400 block text-[9px]">U2 FIX</span>
                       <strong className="text-emerald-400">
                         {selfLearningState.cyclesTotal > 0
                           ? `${Math.round(((selfLearningState.l1Wins + selfLearningState.l2Wins) / selfLearningState.cyclesTotal) * 100)}%`
-                          : `${backtestSummary?.bestUnder3FixRate ?? 91}%`}
+                          : `${backtestSummary?.bestUnder2FixRate ?? 79}%`}
                       </strong>
-                    </span>
-                    <span>
-                      U3 Fix:{' '}
+                    </div>
+                    <div className="p-1.5 rounded-lg bg-[#050814] border border-slate-800 text-center">
+                      <span className="text-slate-400 block text-[9px]">U3 FIX</span>
                       <strong className="text-amber-300">
                         {selfLearningState.cyclesTotal > 0
                           ? `${Math.round(((selfLearningState.l1Wins + selfLearningState.l2Wins + selfLearningState.l3Wins) / selfLearningState.cyclesTotal) * 100)}%`
-                          : `${backtestSummary?.bestUnder3FixRate ?? 91}%`}
+                          : `${backtestSummary?.bestUnder3FixRate ?? 90}%`}
                       </strong>
-                    </span>
+                    </div>
+                    <div className="p-1.5 rounded-lg bg-[#050814] border border-slate-800 text-center">
+                      <span className="text-slate-400 block text-[9px]">U5 SHIELD</span>
+                      <strong className="text-emerald-300">
+                        {selfLearningState.cyclesTotal > 0
+                          ? `${Math.round(((selfLearningState.l1Wins + selfLearningState.l2Wins + selfLearningState.l3Wins + (selfLearningState.l4Wins || 0) + (selfLearningState.l5Wins || 0)) / selfLearningState.cyclesTotal) * 100)}%`
+                          : `${backtestSummary?.bestUnder5FixRate ?? 98}%`}
+                      </strong>
+                    </div>
                   </div>
                 )}
 
                 {geminiInsight?.ok ? (
-                  <div className="space-y-0.5 text-[8.5px]">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-slate-200 truncate">
-                        AI Call:{' '}
+                  <div className="space-y-1.5 text-[11px] bg-[#050814] rounded-xl p-2.5 border border-slate-800">
+                    <div className="flex flex-wrap items-center justify-between gap-1.5">
+                      <span className="text-slate-200 whitespace-nowrap">
+                        Call:{' '}
                         <strong
                           className={
                             geminiInsight.prediction === 'BIG' ? 'text-[#ff4d6d]' : 'text-[#10b981]'
@@ -587,292 +651,302 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
                         >
                           {geminiInsight.prediction} [{geminiInsight.singleDigit}]
                         </strong>{' '}
-                        <span className="text-amber-300">({geminiInsight.confidence}%)</span>
+                        ({geminiInsight.confidence}%)
                       </span>
-                      <span
-                        className={`px-1.5 py-0.2 rounded text-[7.5px] font-bold shrink-0 ${
-                          geminiInsight.under2Priority === 'HIGH_SURESHOT'
-                            ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-400/50'
-                            : geminiInsight.under2Priority === 'CAUTION_WAIT'
-                            ? 'bg-amber-500/25 text-amber-300 border border-amber-400/50'
-                            : 'bg-sky-500/20 text-sky-300 border border-sky-400/40'
-                        }`}
-                      >
-                        {geminiInsight.under2Priority === 'HIGH_SURESHOT'
-                          ? 'SURESHOT UNDER-2'
-                          : geminiInsight.under2Priority === 'CAUTION_WAIT'
-                          ? 'CAUTION'
-                          : 'BALANCED'}
+                      <span className="px-2 py-0.5 rounded bg-violet-950/70 border border-violet-500/30 text-violet-300 font-bold text-[10px] max-w-full truncate">
+                        {geminiInsight.detectedPattern}
                       </span>
                     </div>
-                    <div className="text-slate-300 truncate">
-                      Pattern: <span className="text-violet-300 font-bold">{geminiInsight.detectedPattern}</span>
-                    </div>
-                    <div className="text-slate-400 leading-tight line-clamp-2">
+                    <p className="text-slate-400 text-[10px] leading-relaxed">
                       {geminiInsight.analysisReason}
-                    </div>
-                    {geminiInsight.selfLearningNote && (
-                      <div className="text-emerald-300/90 leading-tight truncate">
-                        📚 {geminiInsight.selfLearningNote}
-                      </div>
-                    )}
-                  </div>
-                ) : geminiInsight && !geminiInsight.ok ? (
-                  <div className="text-[8px] text-sky-300/90 leading-tight">
-                    {geminiInsight.errorCode === 'GEMINI_KEY_MISSING'
-                      ? 'Add GEMINI_API_KEY in AI Studio Settings > Secrets to enable live Gemini LLM reasoning. 19-Algo Quant + Self-Learning AI booster is actively running.'
-                      : geminiInsight.errorCode === 'QUOTA_COOLDOWN' ||
-                        geminiInsight.errorCode === 'RESOURCE_EXHAUSTED'
-                      ? 'Daily free Gemini LLM quota paused — 19-Algo Quant + Self-Learning EMA Booster is actively driving live predictions.'
-                      : `${geminiInsight.error} — 19-Algo Quant + Self-Learning AI booster active.`}
+                    </p>
                   </div>
                 ) : (
-                  <div className="text-[8px] text-slate-400">
-                    Self-Learning EMA + Pattern Regime Booster synced with live draws & 500+ round backtest.
-                  </div>
+                  <p className="text-[10px] text-slate-400 leading-relaxed">
+                    {geminiInsight?.errorCode === 'QUOTA_COOLDOWN' ||
+                    geminiInsight?.errorCode === 'RESOURCE_EXHAUSTED'
+                      ? 'Gemini free daily quota paused — 28-Algo Mirror/Dragon/ZigZag Anti-Bust Oracle + Self-Learning Booster active.'
+                      : '28-Algo Mirror/Dragon/ZigZag Anti-Bust Oracle + Self-Learning Booster synced across 1,099+ rounds.'}
+                  </p>
                 )}
               </div>
             </div>
-          )}
 
-          {/* 📈 CARD: INVESTMENT ROI CALCULATOR (Live Win Rate + Streak Projection) */}
-          <InvestmentRoiCalculator
-            stats={stats}
-            backtestSummary={backtestSummary}
-            selfLearningState={selfLearningState}
-            gameMode={gameMode}
-          />
-
-          {/* 3. CARD: 📜 Live Prediction History & Win/Loss Command Center */}
-          <div className="flex flex-col rounded-2xl bg-[#0e0f1f] border border-slate-800/80 p-2.5 shadow-xl mb-2 shrink-0 min-h-[260px]">
-            {/* Live Win / Loss Command Hub */}
-            <div className="shrink-0 mb-2">
-              <div className="font-extrabold text-xs sm:text-sm text-[#f59e0b] mb-1.5 flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <span>📜</span>
-                  <span>Live Prediction History</span>
+            {/* RIGHT COLUMN: Telemetry Ribbon + Upgraded Live History Ledger */}
+            <div className="lg:col-span-7 space-y-3.5">
+              {/* Session Metrics Ribbon */}
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center font-mono tabular-nums">
+                <div className="p-2.5 rounded-xl bg-[#090e1d] border border-emerald-500/35">
+                  <div className="text-[10px] text-slate-400 uppercase font-sans font-semibold">Wins</div>
+                  <div className="text-base font-black text-emerald-400">{stats.wins}</div>
                 </div>
-                {onResetStats && (
-                  <button
-                    onClick={onResetStats}
-                    className="text-[9px] px-2 py-0.5 rounded bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-mono transition-colors border border-slate-700/60 cursor-pointer"
+                <div className="p-2.5 rounded-xl bg-[#090e1d] border border-red-500/35">
+                  <div className="text-[10px] text-slate-400 uppercase font-sans font-semibold">Losses</div>
+                  <div className="text-base font-black text-red-400">{stats.losses}</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-[#090e1d] border border-sky-500/35">
+                  <div className="text-[10px] text-slate-400 uppercase font-sans font-semibold">Win Rate</div>
+                  <div className="text-base font-black text-sky-400">{stats.winRate.toFixed(1)}%</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-[#090e1d] border border-amber-500/35">
+                  <div className="text-[10px] text-slate-400 uppercase font-sans font-semibold">9X Hits</div>
+                  <div className="text-base font-black text-amber-300">{stats.singleJackpotHits || 0}</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-[#090e1d] border border-slate-800">
+                  <div className="text-[10px] text-slate-400 uppercase font-sans font-semibold">
+                    {(stats.level4Wins || 0) + (stats.level5Wins || 0) > 0 ? 'L1-L5 Wins' : 'L1 / L2 / L3'}
+                  </div>
+                  <div className="text-xs font-black text-slate-200 mt-1">
+                    {stats.level1Wins}/{stats.level2Wins}/{stats.level3Wins}
+                    {(stats.level4Wins || 0) + (stats.level5Wins || 0) > 0
+                      ? `/${stats.level4Wins || 0}/${stats.level5Wins || 0}`
+                      : ''}
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-[#090e1d] border border-slate-800">
+                  <div className="text-[10px] text-slate-400 uppercase font-sans font-semibold">Est P/L</div>
+                  <div
+                    className={`text-sm font-black mt-0.5 ${
+                      sessionNetPnl >= 0 ? 'text-emerald-400' : 'text-red-400'
+                    }`}
                   >
-                    ⟲ Reset Count
-                  </button>
-                )}
+                    {sessionNetPnl >= 0 ? '+' : '-'}₹{Math.abs(sessionNetPnl)}
+                  </div>
+                </div>
               </div>
 
-              {/* Hyper-Premium Win / Loss Counter Ribbon */}
-              <div className="grid grid-cols-4 gap-1 text-center font-mono text-xs mb-1.5">
-                {/* Wins */}
-                <div className="p-1 rounded-xl bg-gradient-to-b from-emerald-950/50 to-slate-900 border border-emerald-500/40 shadow-sm">
-                  <div className="text-[8.5px] text-slate-400 uppercase font-sans font-bold">Total Wins</div>
-                  <div className="text-xs font-black text-emerald-400 flex items-center justify-center gap-0.5">
-                    <span>{stats.wins}</span>
-                    {stats.streak > 1 && (
-                      <span className="text-[8.5px] text-amber-300 font-sans">
-                        🔥+{stats.streak}
+              {/* Upgraded Glassmorphic Live Prediction History Command Card */}
+              <div className="rounded-2xl bg-[#090e1d]/75 backdrop-blur-xl ring-1 ring-white/10 border border-sky-500/25 p-3.5 shadow-[0_24px_64px_rgba(0,0,0,0.65)] flex flex-col">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="font-display font-extrabold text-sm sm:text-base text-white">
+                        Live Prediction History Ledger
+                      </h2>
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-400/40 text-emerald-300 font-mono text-[10px] font-bold tabular-nums">
+                        U2 Fix {sessionUnder2Pct}%
                       </span>
+                    </div>
+                    <p className="text-[11px] font-mono text-slate-400 mt-0.5">
+                      Tap any settled round to inspect Win / Loss / 9X Jackpot card
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 font-mono text-[10px]">
+                    <label className="flex items-center gap-1 bg-[#050814]/90 border border-slate-800 rounded-lg px-2 py-1 text-slate-300">
+                      <span>Base ₹</span>
+                      <input
+                        type="number"
+                        min={10}
+                        step={10}
+                        value={baseUnitStake}
+                        onChange={(e) => setBaseUnitStake(Math.max(10, Number(e.target.value) || 100))}
+                        className="w-12 bg-transparent text-white font-bold outline-none tabular-nums"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleExportCsv}
+                      disabled={filteredHistory.length === 0}
+                      className="min-h-[30px] px-2.5 py-1 rounded-lg bg-sky-950/60 hover:bg-sky-900/70 border border-sky-500/40 text-sky-300 font-bold cursor-pointer disabled:opacity-40"
+                    >
+                      Export CSV
+                    </button>
+                    {onResetStats && (
+                      <button
+                        type="button"
+                        onClick={onResetStats}
+                        className="min-h-[30px] px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-bold cursor-pointer"
+                      >
+                        Reset
+                      </button>
                     )}
                   </div>
                 </div>
 
-                {/* Losses */}
-                <div className="p-1 rounded-xl bg-gradient-to-b from-red-950/50 to-slate-900 border border-red-500/40 shadow-sm">
-                  <div className="text-[8.5px] text-slate-400 uppercase font-sans font-bold">Losses</div>
-                  <div className="text-xs font-black text-red-400">
-                    {stats.losses}
-                  </div>
-                </div>
-
-                {/* Win Rate */}
-                <div className="p-1 rounded-xl bg-gradient-to-b from-sky-950/50 to-slate-900 border border-sky-500/40 shadow-sm">
-                  <div className="text-[8.5px] text-slate-400 uppercase font-sans font-bold">Win Rate</div>
-                  <div className="text-xs font-black text-sky-400">
-                    {stats.winRate.toFixed(1)}%
-                  </div>
-                </div>
-
-                {/* Single Jackpot Hits */}
-                <div className="p-1 rounded-xl bg-gradient-to-b from-amber-950/50 to-slate-900 border border-amber-500/40 shadow-sm">
-                  <div className="text-[8.5px] text-slate-400 uppercase font-sans font-bold">9x Hits</div>
-                  <div className="text-[11px] font-black text-amber-300 truncate">
-                    {stats.singleJackpotHits || 0} 🔥
-                  </div>
-                </div>
-              </div>
-
-              {/* Outcome Filter Toolbar */}
-              <div className="flex items-center gap-1 text-[9.5px] font-mono font-bold pb-1 overflow-x-auto">
-                <button
-                  onClick={() => setHistoryFilter('ALL')}
-                  className={`px-2 py-0.5 rounded-md transition-colors cursor-pointer whitespace-nowrap ${
-                    historyFilter === 'ALL'
-                      ? 'bg-sky-500/20 text-sky-300 border border-sky-400/50'
-                      : 'bg-slate-900/60 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  All ({history.length})
-                </button>
-                <button
-                  onClick={() => setHistoryFilter('WIN')}
-                  className={`px-2 py-0.5 rounded-md transition-colors cursor-pointer whitespace-nowrap ${
-                    historyFilter === 'WIN'
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/50'
-                      : 'bg-slate-900/60 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  Wins ({stats.wins})
-                </button>
-                <button
-                  onClick={() => setHistoryFilter('JACKPOT')}
-                  className={`px-2 py-0.5 rounded-md transition-colors cursor-pointer whitespace-nowrap ${
-                    historyFilter === 'JACKPOT'
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-400/50'
-                      : 'bg-slate-900/60 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  Jackpot ({stats.jackpots})
-                </button>
-                <button
-                  onClick={() => setHistoryFilter('LOSS')}
-                  className={`px-2 py-0.5 rounded-md transition-colors cursor-pointer whitespace-nowrap ${
-                    historyFilter === 'LOSS'
-                      ? 'bg-red-500/20 text-red-300 border border-red-400/50'
-                      : 'bg-slate-900/60 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  Losses ({stats.losses})
-                </button>
-              </div>
-            </div>
-
-            {/* Table Header */}
-            <div className="sticky top-0 z-10 bg-[#0e0f1f] grid grid-cols-4 text-center text-[10px] font-black uppercase tracking-wider text-slate-400 py-1.5 border-b border-slate-800/80 shrink-0">
-              <div className="text-left pl-1">PERIOD</div>
-              <div className="text-center">PREDICTION</div>
-              <div className="text-center">ACTUAL NUMBER</div>
-              <div className="text-right pr-2">STATUS</div>
-            </div>
-
-            {/* Table Rows (Unlimited Smooth Scrolling with Bottom Clearance) */}
-            <div
-              ref={historyContainerRef}
-              className="space-y-1.5 py-1.5 pb-2"
-            >
-              {filteredHistory.length === 0 ? (
-                <div className="py-12 text-center text-slate-500 text-xs font-mono flex flex-col items-center justify-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping inline-block" />
-                  <span>
-                    {history.length === 0
-                      ? `Waiting for next live round #${currentPrediction.period || ''} to complete...`
-                      : `No predictions matching filter "${historyFilter}"`}
-                  </span>
-                  <span className="text-[10px] text-slate-600">
-                    Live history evaluates every round with 100% truthful verification.
-                  </span>
-                </div>
-              ) : (
-                filteredHistory.map((row, index) => {
-                  const shortPeriod =
-                    row.period.length > 4 ? row.period.slice(-4) : row.period;
-
-                  const isBig = row.pred === 'BIG';
-                  const isJackpot = row.outcome === 'JACKPOT';
-                  const isWin = row.outcome === 'WIN';
-                  const isSingleHit = row.isSingleHit || (row.singleJackpotDigit !== undefined && String(row.singleJackpotDigit) === String(row.number));
-
-                  return (
-                    <div
-                      key={`${row.period}-${index}`}
-                      className={`grid grid-cols-4 items-center text-center py-2 px-1.5 border transition-all rounded-xl backdrop-blur-sm ${
-                        isSingleHit
-                          ? 'border-amber-400/90 bg-gradient-to-r from-amber-950/60 via-yellow-950/40 to-slate-900/80 shadow-[0_0_16px_rgba(245,158,11,0.35)]'
-                          : isJackpot
-                          ? 'border-amber-400/60 bg-gradient-to-r from-amber-950/40 via-yellow-950/20 to-slate-900/60 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
-                          : isWin
-                          ? 'border-emerald-500/40 bg-gradient-to-r from-emerald-950/30 to-slate-900/50 shadow-[0_0_8px_rgba(16,185,129,0.1)]'
-                          : 'border-red-500/40 bg-gradient-to-r from-red-950/30 to-slate-900/50 shadow-[0_0_8px_rgba(239,68,68,0.1)]'
-                      }`}
-                    >
-                      {/* 1. Period with Level badge */}
-                      <div className="text-left pl-1 flex flex-col">
-                        <span className="font-mono text-xs text-slate-300 font-bold">
-                          #{shortPeriod}
-                        </span>
-                        {row.level && (
-                          <span className="text-[8px] font-mono text-amber-400/80 font-bold">
-                            Level {row.level}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* 2. Prediction (Big in red, Small in green) + Single Digit Tag */}
-                      <div className="text-center flex flex-col items-center">
-                        <span
-                          className={`font-black text-xs sm:text-sm ${
-                            isBig
-                              ? 'text-[#ff4d6d] drop-shadow-[0_0_8px_rgba(255,77,109,0.5)]'
-                              : 'text-[#10b981] drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]'
+                {/* Recent 10 Outcome Strip */}
+                {historyWithPnl.length > 0 && (
+                  <div className="flex items-center gap-1.5 mb-3 overflow-x-auto pb-1 font-mono text-[10px] tabular-nums">
+                    <span className="text-slate-400 shrink-0">L10:</span>
+                    {historyWithPnl.slice(0, 10).map((r, i) => {
+                      const isJp = r.outcome === 'JACKPOT' || r.isSingleHit;
+                      const isW = r.outcome === 'WIN' || isJp;
+                      return (
+                        <button
+                          key={`chip-${r.period}-${i}`}
+                          type="button"
+                          onClick={() => setSelectedHistoryPopup(r)}
+                          className={`px-2 py-0.5 rounded-md font-bold border shrink-0 cursor-pointer ${
+                            isJp
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-400/50'
+                              : isW
+                              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                              : 'bg-red-500/15 text-red-300 border-red-500/40'
                           }`}
                         >
-                          {isBig ? 'Big' : 'Small'}
-                        </span>
-                        {row.singleJackpotDigit !== undefined && (
-                          <span className="text-[8px] font-mono text-amber-300">
-                            Single [{row.singleJackpotDigit}]
-                          </span>
-                        )}
-                      </div>
+                          {isJp ? '9X' : isW ? `W·L${r.level || 1}` : 'L'}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
-                      {/* 3. Actual Number */}
-                      <div className="text-center font-black text-xs sm:text-sm text-[#38bdf8] font-mono">
-                        <span
-                          className={`px-2 py-0.5 rounded-lg border ${
-                            isSingleHit
-                              ? 'bg-amber-500/30 border-amber-400 text-amber-300 font-black shadow-[0_0_10px_rgba(245,158,11,0.5)]'
-                              : 'bg-sky-950/50 border-sky-500/30'
-                          }`}
-                        >
-                          {row.number}
-                        </span>
-                      </div>
+                {/* Search + Filter Toolbar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0 text-[10px] font-mono font-bold">
+                    {(['ALL', 'WIN', 'JACKPOT', 'LOSS', 'L2L3'] as const).map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => setHistoryFilter(f)}
+                        className={`min-h-[30px] px-2.5 py-1 rounded-lg transition-colors cursor-pointer whitespace-nowrap border ${
+                          historyFilter === f
+                            ? 'bg-sky-500/20 text-sky-300 border-sky-400/50'
+                            : 'bg-[#050814]/90 text-slate-400 border-slate-800 hover:text-white'
+                        }`}
+                      >
+                        {f === 'ALL'
+                          ? `All (${history.length})`
+                          : f === 'WIN'
+                          ? `Wins (${stats.wins})`
+                          : f === 'JACKPOT'
+                          ? `9X (${stats.jackpots})`
+                          : f === 'LOSS'
+                          ? `Loss (${stats.losses})`
+                          : 'L2-L5 Rec'}
+                      </button>
+                    ))}
+                  </div>
 
-                      {/* 4. Truthful Status Pill */}
-                      <div className="flex justify-end pr-1">
-                        {isSingleHit ? (
-                          <div className="bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 text-black font-black text-[9px] px-2 py-0.5 rounded-full shadow-[0_0_14px_rgba(245,158,11,0.8)] flex items-center justify-center gap-0.5 uppercase tracking-wider whitespace-nowrap animate-bounce">
-                            <span>🎯</span>
-                            <span>9X HIT</span>
-                          </div>
-                        ) : isJackpot ? (
-                          <div className="bg-gradient-to-r from-[#ff9f1c] via-[#ff6b35] to-[#e63946] text-black font-black text-[9px] px-2 py-0.5 rounded-full shadow-[0_0_12px_rgba(255,107,53,0.5)] flex items-center justify-center gap-1 uppercase tracking-wider whitespace-nowrap animate-pulse">
-                            <span>🔥</span>
-                            <span>JACKPOT</span>
-                          </div>
-                        ) : isWin ? (
-                          <div className="border border-emerald-500/80 bg-emerald-950/60 text-emerald-300 font-black text-[9px] px-2 py-0.5 rounded-full flex items-center justify-center gap-0.5 uppercase tracking-wider whitespace-nowrap shadow-[0_0_8px_rgba(16,185,129,0.3)]">
-                            <span>✓</span>
-                            <span>WIN (L{row.level || 1})</span>
-                          </div>
-                        ) : (
-                          <div className="border border-red-500/80 bg-red-950/60 text-red-300 font-black text-[9px] px-2 py-0.5 rounded-full flex items-center justify-center gap-0.5 uppercase tracking-wider whitespace-nowrap shadow-[0_0_8px_rgba(239,68,68,0.3)]">
-                            <span>✕</span>
-                            <span>LOSS (L{row.level || 1})</span>
-                          </div>
-                        )}
+                  <div className="relative sm:w-56">
+                    <input
+                      type="text"
+                      value={historySearch}
+                      onChange={(e) => setHistorySearch(e.target.value)}
+                      placeholder="Search period or digit..."
+                      className="w-full min-h-[32px] px-3 pr-7 py-1 rounded-lg bg-[#050814]/90 border border-slate-800 focus:border-sky-400 outline-none text-xs font-mono text-white placeholder-slate-500"
+                    />
+                    {historySearch && (
+                      <button
+                        type="button"
+                        onClick={() => setHistorySearch('')}
+                        aria-label="Clear search"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs font-mono cursor-pointer"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Table Header */}
+                <div className="grid grid-cols-5 text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 px-2.5 py-2 border-y border-slate-800/90 bg-[#050814]/90 rounded-t-xl">
+                  <div>Period</div>
+                  <div className="text-center">Signal</div>
+                  <div className="text-center">Drawn</div>
+                  <div className="text-center">Net P/L</div>
+                  <div className="text-right">Result</div>
+                </div>
+
+                {/* Animated Rows */}
+                <div className="divide-y divide-slate-800/60 max-h-[480px] overflow-y-auto scrollbar-thin">
+                  {filteredHistory.length === 0 ? (
+                    <div className="py-12 text-center text-slate-400 text-xs font-mono space-y-1.5">
+                      <div>
+                        {history.length === 0
+                          ? `Listening for live round #${currentPrediction.period || ''} settlement...`
+                          : 'No history records match your current filter.'}
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        Continuous unlimited tracking active — every completed round settles automatically.
                       </div>
                     </div>
-                  );
-                })
-              )}
+                  ) : (
+                    <AnimatePresence initial={false}>
+                      {filteredHistory.map((row, index) => {
+                        const shortPeriod = row.period.length > 6 ? row.period.slice(-6) : row.period;
+                        const isBig = row.pred === 'BIG';
+                        const isSingleHit =
+                          row.isSingleHit ||
+                          (row.singleJackpotDigit !== undefined &&
+                            String(row.singleJackpotDigit) === String(row.number));
+                        const isWin = row.outcome === 'WIN' || row.outcome === 'JACKPOT';
+
+                        return (
+                          <motion.button
+                            key={`${row.period}-${index}`}
+                            type="button"
+                            layout
+                            initial={{ opacity: 0, y: -8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.22 }}
+                            onClick={() => setSelectedHistoryPopup(row)}
+                            className="w-full text-left grid grid-cols-5 items-center py-2.5 px-2.5 text-xs font-mono tabular-nums hover:bg-white/[0.04] transition-colors cursor-pointer"
+                          >
+                            <div className="min-w-0 pr-1">
+                              <div className="font-bold text-slate-200 truncate">#{shortPeriod}</div>
+                              <div className="text-[10px] text-slate-400 truncate">
+                                L{row.level || 1} · {row.time}
+                              </div>
+                            </div>
+
+                            <div className="text-center">
+                              <span
+                                className={`font-black ${
+                                  isBig ? 'text-[#ff4d6d]' : 'text-[#10b981]'
+                                }`}
+                              >
+                                {row.pred}
+                              </span>
+                              {row.singleJackpotDigit !== undefined && (
+                                <div className="text-[10px] text-amber-300 font-bold">
+                                  [{row.singleJackpotDigit}] · {row.confidence}%
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="text-center">
+                              <span className="px-2 py-0.5 rounded bg-[#050814]/90 border border-slate-800 text-sky-300 font-bold">
+                                {row.number} ({row.result[0]})
+                              </span>
+                            </div>
+
+                            <div
+                              className={`text-center font-bold ${
+                                row.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'
+                              }`}
+                            >
+                              {row.pnl >= 0 ? '+' : '-'}₹{Math.abs(row.pnl)}
+                            </div>
+
+                            <div className="text-right">
+                              <span
+                                className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-black border ${
+                                  isSingleHit
+                                    ? 'bg-amber-500/20 text-amber-300 border-amber-400/50 shadow-[0_0_12px_rgba(245,158,11,0.25)]'
+                                    : isWin
+                                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                                    : 'bg-red-500/15 text-red-300 border-red-500/40'
+                                }`}
+                              >
+                                {isSingleHit ? '9X HIT' : row.outcome}
+                              </span>
+                            </div>
+                          </motion.button>
+                        );
+                      })}
+                    </AnimatePresence>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        </main>
       )}
 
       {/* =========================================================================
-          VIEW TAB: PATTERN ANALYSIS (D3.js Trend Heatmap & 100K+ Consensus Voting)
+          VIEW 2: PATTERN & 1,099+ BACKTEST LAB
          ========================================================================= */}
       {activeTab === 'pattern' && (
         <PatternAnalysisPanel
@@ -887,184 +961,149 @@ export const JujutsuTerminal: React.FC<JujutsuTerminalProps> = ({
       )}
 
       {/* =========================================================================
-          VIEW TAB: MY (User License & KHELV GAME PENEL Telemetry View)
+          VIEW 3: SYSTEM ARCHITECTURE & SELF-LEARNING AI MEMORY
          ========================================================================= */}
       {activeTab === 'my' && (
-        <div className="flex-1 flex flex-col p-3">
-          <div className="rounded-2xl bg-[#0e0f1f] border border-sky-500/40 p-3.5 mb-2.5 shadow-xl">
-            <h3 className="font-extrabold text-white text-sm mb-1.5 flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#10b981]" />
-              <span>KHELV GAME PENEL • 500+ ROUND BACKTEST ENGINE</span>
-            </h3>
-            <p className="text-xs text-slate-400 leading-relaxed mb-2.5">
-              1,024,000+ Consensus Nodes integrated with real-time 500+ round historical database backtesting, 170,000 calculations, Target 10-Win Protocol, and 3-Level Fix-Win Recovery.
+        <main className="flex-1 p-3 sm:p-5 grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+          <div className="rounded-2xl bg-[#090e1d] border border-sky-500/35 p-4 shadow-xl">
+            <h2 className="font-display font-extrabold text-white text-base mb-1.5">
+              KHELV GAME PENEL · QUANT CORE ARCHITECTURE
+            </h2>
+            <p className="text-xs text-slate-400 leading-relaxed mb-3">
+              2,560,000+ Consensus Nodes synchronized with 1,099+ historical rounds, 28 mathematical algorithms (Mirror, Dragon &amp; ZigZag Shield), 170,000 real calculations, and unlimited continuous win routing.
             </p>
-
-            <div className="space-y-1.5 text-xs font-mono">
-              <div className="flex justify-between p-1.5 rounded-lg bg-black/40 border border-white/5">
-                <span className="text-slate-400">Total Nodes:</span>
-                <span className="text-emerald-400 font-bold">1,024,000 ONLINE</span>
-              </div>
-              <div className="flex justify-between p-1.5 rounded-lg bg-black/40 border border-white/5">
-                <span className="text-slate-400">Pure Real Calculations:</span>
-                <span className="text-amber-400 font-bold">170,000 ACTIVE</span>
-              </div>
-              <div className="flex justify-between p-1.5 rounded-lg bg-black/40 border border-white/5">
-                <span className="text-slate-400">Target Win Protocol:</span>
-                <span className="text-sky-400 font-bold">10 Wins Under 3 Level Fix</span>
-              </div>
-              <div className="flex justify-between p-1.5 rounded-lg bg-black/40 border border-white/5">
-                <span className="text-slate-400">Single No. Sureshot:</span>
-                <span className="text-amber-300 font-bold">9x Direct Payout Armed</span>
-              </div>
-              <div className="flex justify-between p-1.5 rounded-lg bg-black/40 border border-white/5">
-                <span className="text-slate-400">Singapore Quantum Alpha:</span>
-                <span className="text-sky-400">256,000 Nodes [3ms]</span>
-              </div>
-              <div className="flex justify-between p-1.5 rounded-lg bg-black/40 border border-white/5">
-                <span className="text-slate-400">Tokyo Ultra Quantum:</span>
-                <span className="text-sky-400">256,000 Nodes [6ms]</span>
-              </div>
-              <div className="flex justify-between p-1.5 rounded-lg bg-black/40 border border-white/5">
-                <span className="text-slate-400">Frankfurt Core Beta:</span>
-                <span className="text-sky-400">256,000 Nodes [9ms]</span>
-              </div>
-              <div className="flex justify-between p-1.5 rounded-lg bg-black/40 border border-white/5">
-                <span className="text-slate-400">Mumbai Dedicated Consensus:</span>
-                <span className="text-sky-400">256,000 Nodes [2ms]</span>
-              </div>
+            <div className="space-y-1.5 text-xs font-mono tabular-nums">
+              {[
+                ['Consensus Clusters', '18 Clusters / 2,560,000 Nodes'],
+                ['Backtest Ensemble', '28 Algorithms (Mirror/Dragon/ZigZag Oracle)'],
+                ['Differentiated Calcs', '170,000 Active (10 Families)'],
+                ['Win Limit Mode', 'UNLIMITED CONTINUOUS'],
+                ['Recovery Shield', 'Under-2/3 & L1-L5 Titanium Shield'],
+                ['9X Jackpot Target', 'Empirical Markov Digit Matrix'],
+              ].map(([k, v]) => (
+                <div
+                  key={k}
+                  className="flex justify-between p-2 rounded-xl bg-[#050814] border border-slate-800/80"
+                >
+                  <span className="text-slate-400">{k}</span>
+                  <span className="text-emerald-400 font-bold">{v}</span>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* 🧠 Self-Learning AI Memory Telemetry */}
-          {selfLearningState && (
-            <div className="rounded-2xl bg-[#0e0f1f] border border-violet-500/40 p-3.5 mb-2.5 shadow-xl">
-              <h4 className="font-extrabold text-violet-300 text-xs mb-2 flex items-center justify-between">
-                <span>🧠 GEMINI 4 HYDROGEN • SELF-LEARNING MEMORY</span>
-                <span className="text-[10px] font-mono text-emerald-400">
-                  {selfLearningState.totalRoundsLearned} Rounds Learned
-                </span>
-              </h4>
-              <div className="grid grid-cols-4 gap-1.5 text-center font-mono text-[10px] mb-2">
-                <div className="p-1.5 rounded-lg bg-black/40 border border-white/5">
-                  <div className="text-[8px] text-slate-400">L1 WINS</div>
-                  <div className="text-emerald-400 font-black">{selfLearningState.l1Wins}</div>
+          <div className="space-y-4">
+            {selfLearningState && (
+              <div className="rounded-2xl bg-[#090e1d] border border-violet-500/35 p-4 shadow-xl">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-display font-extrabold text-violet-300 text-sm">
+                    SELF-LEARNING REGIME MEMORY
+                  </h3>
+                  <span className="text-xs font-mono text-emerald-400 tabular-nums">
+                    {selfLearningState.totalRoundsLearned} Rounds Learned
+                  </span>
                 </div>
-                <div className="p-1.5 rounded-lg bg-black/40 border border-white/5">
-                  <div className="text-[8px] text-slate-400">L2 FIX</div>
-                  <div className="text-sky-400 font-black">{selfLearningState.l2Wins}</div>
-                </div>
-                <div className="p-1.5 rounded-lg bg-black/40 border border-white/5">
-                  <div className="text-[8px] text-slate-400">L3 FIX</div>
-                  <div className="text-amber-300 font-black">{selfLearningState.l3Wins}</div>
-                </div>
-                <div className="p-1.5 rounded-lg bg-black/40 border border-white/5">
-                  <div className="text-[8px] text-slate-400">GEMINI HIT</div>
-                  <div className="text-violet-300 font-black">
-                    {selfLearningState.geminiTotal > 0
-                      ? `${Math.round((selfLearningState.geminiWins / selfLearningState.geminiTotal) * 100)}%`
-                      : 'READY'}
+                <div className="grid grid-cols-4 gap-2 text-center font-mono text-xs mb-3 tabular-nums">
+                  <div className="p-2 rounded-xl bg-[#050814] border border-slate-800">
+                    <div className="text-[10px] text-slate-400">L1 WINS</div>
+                    <div className="text-emerald-400 font-black">{selfLearningState.l1Wins}</div>
+                  </div>
+                  <div className="p-2 rounded-xl bg-[#050814] border border-slate-800">
+                    <div className="text-[10px] text-slate-400">L2 FIX</div>
+                    <div className="text-sky-400 font-black">{selfLearningState.l2Wins}</div>
+                  </div>
+                  <div className="p-2 rounded-xl bg-[#050814] border border-slate-800">
+                    <div className="text-[10px] text-slate-400">L3-L5 FIX</div>
+                    <div className="text-amber-300 font-black">
+                      {selfLearningState.l3Wins + (selfLearningState.l4Wins || 0) + (selfLearningState.l5Wins || 0)}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded-xl bg-[#050814] border border-slate-800">
+                    <div className="text-[10px] text-slate-400">GEMINI</div>
+                    <div className="text-violet-300 font-black">
+                      {selfLearningState.geminiTotal > 0
+                        ? `${Math.round((selfLearningState.geminiWins / selfLearningState.geminiTotal) * 100)}%`
+                        : 'READY'}
+                    </div>
                   </div>
                 </div>
+                {selfLearningState.recentLessons.length > 0 && (
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto text-[11px] font-mono text-slate-300 scrollbar-thin">
+                    {selfLearningState.recentLessons.map((l, i) => (
+                      <div
+                        key={`${l.period}-${i}`}
+                        className="p-2 rounded-lg bg-[#050814] border border-slate-800 truncate"
+                      >
+                        {l.lesson}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              {selfLearningState.recentLessons.length > 0 && (
-                <div className="space-y-1 max-h-28 overflow-y-auto text-[9px] font-mono text-slate-300">
-                  {selfLearningState.recentLessons.slice(0, 4).map((l, i) => (
-                    <div key={`${l.period}-${i}`} className="p-1 rounded bg-black/30 border border-white/5 truncate">
-                      {l.lesson}
-                    </div>
-                  ))}
+            )}
+
+            <div className="rounded-2xl bg-[#090e1d] border border-slate-800 p-4 shadow-xl">
+              <h3 className="font-display font-bold text-white text-sm mb-2">
+                TERMINAL LICENSE &amp; DEVICE BINDING
+              </h3>
+              <div className="text-xs font-mono space-y-1.5 text-slate-300 tabular-nums">
+                <div>
+                  <span className="text-slate-500">Tier: </span>
+                  <span className="text-amber-300 font-bold">{licenseSession?.tier || 'VIP'}</span>
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* License & Account Details */}
-          <div className="rounded-2xl bg-[#0e0f1f] border border-slate-800 p-3.5 shadow-xl">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="font-bold text-white text-xs">KHELV GAME PENEL ACCOUNT & DEVICE</h4>
-            </div>
-            <div className="text-xs font-mono space-y-1.5 text-slate-300 tabular-nums">
-              <div>
-                <span className="text-slate-500">Tier: </span>
-                <span className="text-amber-400 font-bold">{licenseSession?.tier || 'VIP'}</span>
+                <div className="break-all">
+                  <span className="text-slate-500">Device ID: </span>
+                  <span className="text-emerald-400">{licenseSession?.deviceId}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Remaining: </span>
+                  <span className="text-sky-300 font-bold">{remainingTimeStr}</span>
+                </div>
               </div>
-              <div>
-                <span className="text-slate-500">Locked Device: </span>
-                <span className="text-emerald-400">{licenseSession?.deviceId}</span>
-              </div>
-              <div>
-                <span className="text-slate-500">Time Left: </span>
-                <span className="text-cyan-400 font-bold">{remainingTimeStr}</span>
-              </div>
+              <button
+                type="button"
+                onClick={onLogoutKey}
+                className="mt-4 w-full min-h-[42px] py-2 bg-red-950/80 hover:bg-red-900 border border-red-500/50 text-red-200 text-xs font-bold rounded-xl cursor-pointer transition-colors"
+              >
+                Lock Terminal &amp; Switch Key
+              </button>
             </div>
-
-            <button
-              onClick={onLogoutKey}
-              className="mt-3 w-full py-2 bg-red-950/80 hover:bg-red-900 border border-red-500/50 text-red-200 text-xs font-bold rounded-xl cursor-pointer transition-colors shadow-lg"
-            >
-              Lock Terminal & Switch Key
-            </button>
           </div>
-        </div>
+        </main>
       )}
 
       {/* =========================================================================
-          4. BOTTOM NAVIGATION BAR (Compact Sleek Bar: Hack | Pattern Analysis | My)
+          MOBILE BOTTOM NAVIGATION BAR (44px+ TOUCH TARGETS)
          ========================================================================= */}
-      <div className="fixed bottom-0 inset-x-0 bg-[#070714]/98 backdrop-blur-md border-t border-slate-800/80 z-40 max-w-md mx-auto py-1 px-3 flex items-center justify-around shrink-0 h-11">
-        {/* Hack / Predict Tab */}
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 bg-[#040711]/95 backdrop-blur-xl border-t border-slate-800 z-40 px-3 py-1.5 flex items-center justify-around">
         <button
+          type="button"
           onClick={() => setActiveTab('hack')}
-          className={`flex flex-col items-center gap-0.5 cursor-pointer transition-all px-3 py-0.5 rounded-lg ${
-            activeTab === 'hack'
-              ? 'bg-[#12142a] text-sky-400 font-bold border border-sky-500/40 shadow-[0_0_12px_rgba(56,189,248,0.3)]'
-              : 'text-slate-500 hover:text-slate-300'
+          className={`min-h-[44px] flex-1 flex flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-bold cursor-pointer ${
+            activeTab === 'hack' ? 'text-sky-300 bg-sky-500/15' : 'text-slate-400'
           }`}
         >
-          {/* Shield Icon with Checkmark */}
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeWidth="2" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4" />
-          </svg>
-          <span className="text-[9.5px]">Hack / Predict</span>
+          <span>Command</span>
         </button>
-
-        {/* Pattern Analysis Tab (Center) */}
         <button
+          type="button"
           onClick={() => setActiveTab('pattern')}
-          className={`flex flex-col items-center gap-0.5 cursor-pointer transition-all px-3 py-0.5 rounded-lg ${
-            activeTab === 'pattern'
-              ? 'bg-[#12142a] text-amber-400 font-bold border border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
-              : 'text-slate-500 hover:text-slate-300'
+          className={`min-h-[44px] flex-1 flex flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-bold cursor-pointer ${
+            activeTab === 'pattern' ? 'text-amber-300 bg-amber-500/15' : 'text-slate-400'
           }`}
         >
-          {/* Heatmap / Grid Icon */}
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <rect x="3" y="3" width="7" height="7" rx="1.5" strokeWidth="2" />
-            <rect x="14" y="3" width="7" height="7" rx="1.5" strokeWidth="2" />
-            <rect x="3" y="14" width="7" height="7" rx="1.5" strokeWidth="2" />
-            <rect x="14" y="14" width="7" height="7" rx="1.5" strokeWidth="2" />
-          </svg>
-          <span className="text-[9.5px]">Pattern Analysis</span>
+          <span>Pattern Lab</span>
         </button>
-
-        {/* My Tab (Right side) */}
         <button
+          type="button"
           onClick={() => setActiveTab('my')}
-          className={`flex flex-col items-center gap-0.5 cursor-pointer transition-all px-3 py-0.5 rounded-lg ${
-            activeTab === 'my'
-              ? 'bg-[#12142a] text-sky-400 font-bold border border-sky-500/40 shadow-[0_0_12px_rgba(56,189,248,0.3)]'
-              : 'text-slate-500 hover:text-slate-300'
+          className={`min-h-[44px] flex-1 flex flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-bold cursor-pointer ${
+            activeTab === 'my' ? 'text-emerald-300 bg-emerald-500/15' : 'text-slate-400'
           }`}
         >
-          {/* User / My Icon */}
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-          </svg>
-          <span className="text-[9.5px] whitespace-nowrap">KHELV GAME PENEL</span>
+          <span>System &amp; AI</span>
         </button>
-      </div>
+      </nav>
     </div>
   );
 };

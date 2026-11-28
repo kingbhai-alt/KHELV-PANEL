@@ -1,10 +1,11 @@
 import { JAICLUB_HISTORY_500, JaiClubDrawRecord } from '../data/jaiclubHistory500';
 import { KURMA_HISTORY_20261127 } from '../data/kurmaHistory20261127';
+import { LIVE_BATCH_20261127_NIGHT } from '../data/liveBatch20261127Night';
 
 /**
  * WinGo Lottery Service
  * Connects to live WinGo Draw API (30S, 1M, TRX_1M, K3_1M modes)
- * Merges live API draws with the combined 1,000-round JaiClub + Kurma historical dataset & Cloud SQL DB records.
+ * Merges live API draws with the combined 1,100-round JaiClub + Kurma historical dataset & Cloud SQL DB records.
  */
 
 export interface DrawItem {
@@ -12,6 +13,20 @@ export interface DrawItem {
   number: string;
   openTime?: string;
   colour?: string;
+}
+
+export interface QuantumDriftResult {
+  digitVelocities: Record<number, number>;
+  digitAccelerations: Record<number, number>;
+  sizeVelocity: { big: number; small: number };
+  sizeAcceleration: { big: number; small: number };
+  driftBias: 'BIG' | 'SMALL' | 'NEUTRAL';
+  driftMagnitude: number;
+  quantumSurgeDigits: number[];
+  exhaustionDetected: boolean;
+  recoveryReductionMultiplier: number;
+  confidenceDelta: number;
+  summary: string;
 }
 
 export interface LotteryStats {
@@ -24,7 +39,9 @@ export interface LotteryStats {
   level1Wins: number;
   level2Wins: number;
   level3Wins: number;
-  currentLevel: 1 | 2 | 3;
+  level4Wins?: number;
+  level5Wins?: number;
+  currentLevel: 1 | 2 | 3 | 4 | 5;
   targetWins: number;
   targetRunsCompleted: number;
   singleJackpotHits: number;
@@ -43,7 +60,7 @@ export interface HistoryLogRow {
   time: string;
   confidence: number;
   rule?: string;
-  level?: 1 | 2 | 3;
+  level?: 1 | 2 | 3 | 4 | 5;
 }
 
 export interface LastResultInfo {
@@ -52,7 +69,7 @@ export interface LastResultInfo {
   digit: string;
   outcome: 'WIN' | 'LOSS' | '---';
   period: string;
-  level?: 1 | 2 | 3;
+  level?: 1 | 2 | 3 | 4 | 5;
 }
 
 export type WinGoMode = '1M' | 'TRX_1M' | 'K3_1M' | '30S';
@@ -96,6 +113,10 @@ export function getKurma20261127DrawItems(type: WinGoMode): DrawItem[] {
   return recordsToDrawItems(KURMA_HISTORY_20261127, type);
 }
 
+export function getLiveBatch20261127NightDrawItems(type: WinGoMode): DrawItem[] {
+  return recordsToDrawItems(LIVE_BATCH_20261127_NIGHT, type);
+}
+
 export function mergeWith500Dataset(liveItems: DrawItem[], type: WinGoMode): DrawItem[] {
   const map = new Map<string, DrawItem>();
   // 1. Populate with the existing JaiClub historical buffer
@@ -110,7 +131,13 @@ export function mergeWith500Dataset(liveItems: DrawItem[], type: WinGoMode): Dra
       map.set(extraItem.issueNumber, extraItem);
     }
   }
-  // 3. Overlay live API / DB items (live takes priority on matching period)
+  // 3. Integrate the 2026-11-27 night 1-min batch (deduplicated by period)
+  for (const nightItem of getLiveBatch20261127NightDrawItems(type)) {
+    if (nightItem.issueNumber && !map.has(nightItem.issueNumber)) {
+      map.set(nightItem.issueNumber, nightItem);
+    }
+  }
+  // 4. Overlay live API / DB items (live takes priority on matching period)
   for (const liveItem of liveItems) {
     if (liveItem.issueNumber) {
       map.set(liveItem.issueNumber, liveItem);
@@ -199,3 +226,158 @@ export async function fetchLiveDrawHistory(type: WinGoMode = '1M'): Promise<Draw
   // Fallback: Full combined historical dataset (JaiClub + Kurma 2026-11-27)
   return mergeWith500Dataset([], type);
 }
+
+/**
+ * ==================================================
+ * ⚛️ QUANTUM DRIFT ANALYSIS ENGINE (50-ROUND VELOCITY & ACCELERATION)
+ * Calculates the velocity (v = f1 - f2) and acceleration (a = f1 - 2*f2 + f3)
+ * of number frequencies and Big/Small sizes over the last 50 rounds.
+ * Feeds into consensus cluster confidence and ensures aggressive <2 level recovery.
+ * ==================================================
+ */
+export function calculateQuantumDriftAnalysis(
+  drawsOrNumbers: (DrawItem | number | string)[],
+  isK3: boolean = false
+): QuantumDriftResult {
+  const nums: number[] = [];
+  for (const item of drawsOrNumbers || []) {
+    if (typeof item === 'object' && item !== null && 'number' in item) {
+      nums.push(Number(item.number) || 0);
+    } else {
+      nums.push(Number(item) || 0);
+    }
+  }
+
+  const window50 = nums.slice(0, 50);
+  const totalRounds = window50.length;
+
+  // Safe fallback if empty or insufficient data
+  if (totalRounds < 6) {
+    const emptyMap: Record<number, number> = {};
+    const digits = isK3 ? Array.from({ length: 16 }, (_, i) => i + 3) : Array.from({ length: 10 }, (_, i) => i);
+    for (const d of digits) emptyMap[d] = 0;
+    return {
+      digitVelocities: emptyMap,
+      digitAccelerations: emptyMap,
+      sizeVelocity: { big: 0, small: 0 },
+      sizeAcceleration: { big: 0, small: 0 },
+      driftBias: 'NEUTRAL',
+      driftMagnitude: 0,
+      quantumSurgeDigits: isK3 ? [10, 11] : [7, 2],
+      exhaustionDetected: false,
+      recoveryReductionMultiplier: 1.15,
+      confidenceDelta: 2,
+      summary: 'Quantum Drift: Baseline Stable (insufficient history)',
+    };
+  }
+
+  // Partition into 3 temporal subwindows:
+  // W1 (rounds 0..w1End-1): Latest fast wave
+  // W2 (rounds w1End..w2End-1): Intermediate wave
+  // W3 (rounds w2End..totalRounds-1): Baseline wave
+  const w1Size = Math.max(2, Math.floor(totalRounds / 3));
+  const w2Size = Math.max(2, Math.floor(totalRounds / 3));
+  const w1 = window50.slice(0, w1Size);
+  const w2 = window50.slice(w1Size, w1Size + w2Size);
+  const w3 = window50.slice(w1Size + w2Size);
+
+  const len1 = w1.length || 1;
+  const len2 = w2.length || 1;
+  const len3 = w3.length || 1;
+
+  const isBig = (n: number) => (isK3 ? n >= 11 : n >= 5);
+
+  // 1. Size Frequencies, Velocity, and Acceleration
+  const bigCount1 = w1.filter(isBig).length;
+  const bigCount2 = w2.filter(isBig).length;
+  const bigCount3 = w3.filter(isBig).length;
+
+  const fBig1 = bigCount1 / len1;
+  const fBig2 = bigCount2 / len2;
+  const fBig3 = bigCount3 / len3;
+
+  // Velocity: First derivative of frequency
+  const vBig = Math.round((fBig1 - fBig2) * 1000) / 1000;
+  // Acceleration: Second derivative of frequency
+  const aBig = Math.round((fBig1 - 2 * fBig2 + fBig3) * 1000) / 1000;
+
+  const vSmall = -vBig;
+  const aSmall = -aBig;
+
+  // Composite momentum vector (60% velocity + 40% acceleration)
+  const compositeMomentum = Math.round((vBig * 0.6 + aBig * 0.4) * 1000) / 1000;
+  const driftMagnitude = Math.round(Math.abs(compositeMomentum) * 100) / 100;
+
+  let driftBias: 'BIG' | 'SMALL' | 'NEUTRAL' = 'NEUTRAL';
+  if (compositeMomentum >= 0.035) {
+    driftBias = 'BIG';
+  } else if (compositeMomentum <= -0.035) {
+    driftBias = 'SMALL';
+  }
+
+  // 2. Individual Digit Velocity & Acceleration
+  const digitVelocities: Record<number, number> = {};
+  const digitAccelerations: Record<number, number> = {};
+  const surgeScores: { digit: number; score: number }[] = [];
+
+  const eligibleDigits = isK3
+    ? Array.from({ length: 16 }, (_, i) => i + 3)
+    : Array.from({ length: 10 }, (_, i) => i);
+
+  for (const d of eligibleDigits) {
+    const c1 = w1.filter((x) => x === d).length;
+    const c2 = w2.filter((x) => x === d).length;
+    const c3 = w3.filter((x) => x === d).length;
+
+    const fd1 = c1 / len1;
+    const fd2 = c2 / len2;
+    const fd3 = c3 / len3;
+
+    const vd = Math.round((fd1 - fd2) * 1000) / 1000;
+    const ad = Math.round((fd1 - 2 * fd2 + fd3) * 1000) / 1000;
+
+    digitVelocities[d] = vd;
+    digitAccelerations[d] = ad;
+
+    const surgeScore = Math.round((vd * 1.5 + ad * 1.0) * 1000) / 1000;
+    surgeScores.push({ digit: d, score: surgeScore });
+  }
+
+  surgeScores.sort((a, b) => b.score - a.score);
+  const quantumSurgeDigits = surgeScores.slice(0, 3).map((item) => item.digit);
+
+  // 3. Exhaustion & Inflection Detection
+  // If recent concentration is extreme (>68%) but acceleration has turned sharply negative (< -0.10)
+  const exhaustionDetected =
+    (fBig1 >= 0.68 && aBig <= -0.08) || ((1 - fBig1) >= 0.68 && aSmall <= -0.08);
+
+  // 4. Dynamic Under-2 Recovery Boost Multiplier
+  // Increases aggressive pull when entering level 2 recovery
+  const recoveryReductionMultiplier = Math.round(
+    Math.min(1.45, 1.18 + Math.max(0, driftMagnitude) * 1.5) * 100
+  ) / 100;
+
+  const confidenceDelta = Math.min(
+    5,
+    Math.max(1, Math.round(driftMagnitude * 20) + (exhaustionDetected ? 2 : 1))
+  );
+
+  const vBigSign = vBig >= 0 ? '+' : '';
+  const aBigSign = aBig >= 0 ? '+' : '';
+  const summary = `QD-50R: Big[v=${vBigSign}${vBig.toFixed(3)}, a=${aBigSign}${aBig.toFixed(3)}] -> Bias:${driftBias} (Mag:${driftMagnitude}, U2-Mult:x${recoveryReductionMultiplier})`;
+
+  return {
+    digitVelocities,
+    digitAccelerations,
+    sizeVelocity: { big: vBig, small: vSmall },
+    sizeAcceleration: { big: aBig, small: aSmall },
+    driftBias,
+    driftMagnitude,
+    quantumSurgeDigits,
+    exhaustionDetected,
+    recoveryReductionMultiplier,
+    confidenceDelta,
+    summary,
+  };
+}
+

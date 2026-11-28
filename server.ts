@@ -1008,7 +1008,9 @@ async function startServer() {
 
       const ai = getGeminiClient();
       if (!ai) {
-        return res.status(503).json({
+        return res.status(200).json({
+          ok: false,
+          fallbackActive: true,
           error: 'GEMINI_API_KEY is not configured in Settings > Secrets.',
           code: 'GEMINI_KEY_MISSING',
           model: GEMINI_FREE_MODEL,
@@ -1025,8 +1027,10 @@ async function startServer() {
           ...GEMINI_FREE_CANDIDATES.map((m) => modelCooldownUntil.get(m) || now + 300000)
         );
         const retryAfterSec = Math.max(30, Math.ceil((earliestReset - now) / 1000));
-        return res.status(429).json({
-          error: `Free-tier Gemini quota reached; 19-Algo Quant + Self-Learning AI running smoothly (retry in ~${Math.ceil(retryAfterSec / 60)}m).`,
+        return res.status(200).json({
+          ok: false,
+          fallbackActive: true,
+          error: `Free-tier Gemini quota reached; 24-Algo Quant + Self-Learning AI running smoothly (retry in ~${Math.ceil(retryAfterSec / 60)}m).`,
           code: 'QUOTA_COOLDOWN',
           retryAfterSec,
           model: GEMINI_FREE_MODEL,
@@ -1269,7 +1273,7 @@ ${lessonsText}`;
         ? 90
         : undefined;
       const cleanError = isQuota
-        ? 'Free-tier daily AI limit reached; 19-Algo Quant + Self-Learning AI active until quota resets.'
+        ? 'Free-tier daily AI limit reached; 24-Algo Quant + Self-Learning AI active until quota resets.'
         : isBusy
         ? 'Gemini AI is temporarily busy (high demand); retrying automatically.'
         : rawMsg;
@@ -1278,10 +1282,13 @@ ${lessonsText}`;
       } else {
         console.warn(`POST /api/ai/predict status ${status}: ${cleanError}`);
       }
-      return res.status(status).json({
+      const httpStatus = isQuota || isBusy ? 200 : status;
+      return res.status(httpStatus).json({
+        ok: false,
+        fallbackActive: isQuota || isBusy,
         error: cleanError,
         code: isQuota
-          ? 'RESOURCE_EXHAUSTED'
+          ? 'QUOTA_COOLDOWN'
           : isBusy
           ? 'GEMINI_HIGH_DEMAND'
           : isAuth
